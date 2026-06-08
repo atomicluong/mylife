@@ -44,7 +44,7 @@ export default function Sidebar({ activeTab, setActiveTab, isSidebarOpen, setIsS
   } = useApp();
 
   const [installPrompt, setInstallPrompt] = useState(null);
-  const [showIOSHint, setShowIOSHint] = useState(false);
+  const [showHint, setShowHint] = useState(false);
   const [installed, setInstalled] = useState(isInStandaloneMode());
 
   useEffect(() => {
@@ -55,14 +55,19 @@ export default function Sidebar({ activeTab, setActiveTab, isSidebarOpen, setIsS
   }, []);
 
   const handleInstall = async () => {
-    if (isIOS()) { setShowIOSHint(h => !h); return; }
-    if (!installPrompt) return;
-    installPrompt.prompt();
-    const { outcome } = await installPrompt.userChoice;
-    if (outcome === 'accepted') { setInstalled(true); setInstallPrompt(null); }
+    if (isIOS()) { setShowHint(h => !h); return; }
+    if (installPrompt) {
+      installPrompt.prompt();
+      const { outcome } = await installPrompt.userChoice;
+      if (outcome === 'accepted') { setInstalled(true); setInstallPrompt(null); }
+    } else {
+      setShowHint(h => !h);
+    }
   };
 
-  const canShowInstall = !installed && (installPrompt || isIOS());
+  const hintText = isIOS()
+    ? 'Trên Safari: nhấn nút Share (vuông + mũi tên) → Add to Home Screen'
+    : 'Nhìn lên thanh địa chỉ Chrome, nhấn biểu tượng máy tính có dấu ⊕ để cài. Hoặc menu Chrome (⋮) → Cài đặt ứng dụng.';
 
   const formatTime = (secs) => {
     const mins = Math.floor(secs / 60);
@@ -367,8 +372,8 @@ export default function Sidebar({ activeTab, setActiveTab, isSidebarOpen, setIsS
           </div>
         )}
 
-        {/* Install PWA Button */}
-        {canShowInstall && (
+        {/* Install PWA Button – luôn hiện khi chưa cài */}
+        {!installed && (
           <div style={{ marginBottom: '0.5rem' }}>
             <button
               onClick={handleInstall}
@@ -392,9 +397,9 @@ export default function Sidebar({ activeTab, setActiveTab, isSidebarOpen, setIsS
               onMouseLeave={e => e.currentTarget.style.background = 'linear-gradient(135deg, rgba(134,59,255,0.15) 0%, rgba(99,102,241,0.1) 100%)'}
             >
               {isIOS() ? <Smartphone size={15} /> : <Download size={15} />}
-              Cài App về máy
+              {installPrompt ? 'Cài App về máy' : 'Hướng dẫn cài App'}
             </button>
-            {showIOSHint && (
+            {showHint && (
               <div style={{
                 marginTop: '0.5rem',
                 padding: '0.6rem 0.75rem',
@@ -403,9 +408,9 @@ export default function Sidebar({ activeTab, setActiveTab, isSidebarOpen, setIsS
                 borderRadius: 'var(--radius-md)',
                 fontSize: '0.75rem',
                 color: 'var(--text-secondary)',
-                lineHeight: 1.5
+                lineHeight: 1.6
               }}>
-                Trên Safari: nhấn <strong style={{color:'var(--accent-primary)'}}>nút Share</strong> (vuông + mũi tên) → <strong style={{color:'var(--accent-primary)'}}>Add to Home Screen</strong>
+                {hintText}
               </div>
             )}
           </div>
