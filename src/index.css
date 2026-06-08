@@ -1,0 +1,592 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+:root {
+  --font-display: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+
+  /* Theme color HSL tokens (Light mode defaults) */
+  --bg-gradient: linear-gradient(135deg, #f0f4f9 0%, #e2e8f0 100%);
+  --bg-app: #f8fafc;
+  --bg-card: rgba(255, 255, 255, 0.7);
+  --bg-glass: rgba(255, 255, 255, 0.45);
+  
+  --border-color: rgba(148, 163, 184, 0.2);
+  --border-glow: rgba(59, 130, 246, 0.15);
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+
+  --accent-primary: #3b82f6;      /* Vibrant blue */
+  --accent-glow: rgba(59, 130, 246, 0.4);
+  --accent-secondary: #8b5cf6;    /* Premium Violet */
+  --accent-success: #10b981;      /* Emerald Green */
+  --accent-warning: #f59e0b;      /* Golden Orange */
+  --accent-danger: #ef4444;       /* Rose Red */
+
+  --card-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
+  --card-shadow-hover: 0 12px 40px 0 rgba(31, 38, 135, 0.1);
+  --glow-shadow: 0 0 15px var(--accent-glow);
+
+  --radius-lg: 18px;
+  --radius-md: 12px;
+  --radius-sm: 8px;
+  --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Dark mode overrides (Default and recommended for premium look) */
+.dark {
+  --bg-gradient: radial-gradient(circle at 10% 20%, rgb(15, 18, 36) 0%, rgb(9, 10, 18) 100%);
+  --bg-app: #090a12;
+  --bg-card: rgba(17, 20, 38, 0.65);
+  --bg-glass: rgba(13, 16, 32, 0.4);
+  
+  --border-color: rgba(255, 255, 255, 0.06);
+  --border-glow: rgba(139, 92, 246, 0.2);
+
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+
+  --accent-primary: #6366f1;      /* Glow Indigo */
+  --accent-glow: rgba(99, 102, 241, 0.4);
+  --accent-secondary: #a78bfa;    /* Bright Lavender */
+  --accent-success: #34d399;      /* Pastel Green */
+  --accent-warning: #fbbf24;      /* Golden Yellow */
+  --accent-danger: #f87171;       /* Soft Red */
+
+  --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  --card-shadow-hover: 0 12px 48px 0 rgba(0, 0, 0, 0.5);
+}
+
+/* Global Reset */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-sans);
+}
+
+body {
+  background: var(--bg-gradient);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+  transition: var(--transition-smooth);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Premium Layout & Glassmorphism Utility Classes */
+.glass-panel {
+  background: var(--bg-card);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--card-shadow);
+  transition: var(--transition-smooth);
+}
+
+.glass-panel:hover {
+  border-color: var(--border-glow);
+  box-shadow: var(--card-shadow-hover);
+}
+
+.glass-card-interactive {
+  background: var(--bg-glass);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.glass-card-interactive:hover {
+  transform: translateY(-3px);
+  border-color: var(--accent-primary);
+  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.15);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+  color: #ffffff;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: var(--transition-smooth);
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45);
+  opacity: 0.95;
+}
+
+.btn-secondary {
+  background: var(--bg-glass);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: var(--transition-smooth);
+}
+
+.btn-secondary:hover {
+  background: var(--border-color);
+  border-color: var(--text-secondary);
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 50%, #ec4899 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Animations */
+@keyframes pulseGlow {
+  0% { box-shadow: 0 0 5px var(--accent-primary); }
+  50% { box-shadow: 0 0 20px var(--accent-primary); }
+  100% { box-shadow: 0 0 5px var(--accent-primary); }
+}
+
+.pulse-glow-effect {
+  animation: pulseGlow 2s infinite ease-in-out;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(15px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.slide-in {
+  animation: slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Simple Flex Grid Helper */
+.app-container {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  min-height: 100vh;
+}
+
+.app-container.reader-fullscreen {
+  grid-template-columns: 1fr !important;
+}
+
+@media (max-width: 1024px) {
+  .app-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Ebook Reader Column Pagination and Flip Animations */
+.reader-viewport {
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+  perspective: 2000px;
+  border-radius: var(--radius-md);
+  background: transparent;
+}
+
+.reader-book-page {
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+/* 3D flip animation styles - Realistic book page turn */
+.reader-book-page.flip-next-out {
+  animation: flipPageNextOut 0.32s forwards cubic-bezier(0.4, 0, 0.8, 0.6);
+  transform-origin: left center;
+}
+.reader-book-page.flip-next-in {
+  transform: perspective(1400px) rotateY(90deg);
+  transform-origin: left center;
+  opacity: 0;
+}
+.reader-book-page.flip-next-in-animate {
+  animation: flipPageNextIn 0.32s forwards cubic-bezier(0.2, 0.4, 0.2, 1);
+  transform-origin: left center;
+}
+.reader-book-page.flip-prev-out {
+  animation: flipPagePrevOut 0.32s forwards cubic-bezier(0.4, 0, 0.8, 0.6);
+  transform-origin: right center;
+}
+.reader-book-page.flip-prev-in {
+  transform: perspective(1400px) rotateY(-90deg);
+  transform-origin: right center;
+  opacity: 0;
+}
+.reader-book-page.flip-prev-in-animate {
+  animation: flipPagePrevIn 0.32s forwards cubic-bezier(0.2, 0.4, 0.2, 1);
+  transform-origin: right center;
+}
+
+/* Slide animation styles */
+.reader-book-page.slide-next-out {
+  animation: slidePageNextOut 0.25s forwards cubic-bezier(0.4, 0, 1, 1);
+}
+.reader-book-page.slide-next-in {
+  transform: translateX(100%);
+  opacity: 0;
+}
+.reader-book-page.slide-next-in-animate {
+  animation: slidePageNextIn 0.25s forwards cubic-bezier(0, 0, 0.2, 1);
+}
+.reader-book-page.slide-prev-out {
+  animation: slidePagePrevOut 0.25s forwards cubic-bezier(0.4, 0, 1, 1);
+}
+.reader-book-page.slide-prev-in {
+  transform: translateX(-100%);
+  opacity: 0;
+}
+.reader-book-page.slide-prev-in-animate {
+  animation: slidePagePrevIn 0.25s forwards cubic-bezier(0, 0, 0.2, 1);
+}
+
+/* === Keyframes for realistic 3D Book Page Flip === */
+@keyframes flipPageNextOut {
+  0% {
+    transform: perspective(1400px) rotateY(0deg);
+    filter: brightness(1);
+    opacity: 1;
+  }
+  40% {
+    filter: brightness(0.75) drop-shadow(-10px 2px 18px rgba(0,0,0,0.55));
+  }
+  100% {
+    transform: perspective(1400px) rotateY(-90deg);
+    filter: brightness(0.25) drop-shadow(-20px 0 30px rgba(0,0,0,0.9));
+    opacity: 0.15;
+  }
+}
+
+@keyframes flipPageNextIn {
+  0% {
+    transform: perspective(1400px) rotateY(90deg);
+    filter: brightness(0.25) drop-shadow(20px 0 30px rgba(0,0,0,0.9));
+    opacity: 0.15;
+  }
+  60% {
+    filter: brightness(0.75) drop-shadow(10px 2px 18px rgba(0,0,0,0.55));
+  }
+  100% {
+    transform: perspective(1400px) rotateY(0deg);
+    filter: brightness(1);
+    opacity: 1;
+  }
+}
+
+@keyframes flipPagePrevOut {
+  0% {
+    transform: perspective(1400px) rotateY(0deg);
+    filter: brightness(1);
+    opacity: 1;
+  }
+  40% {
+    filter: brightness(0.75) drop-shadow(10px 2px 18px rgba(0,0,0,0.55));
+  }
+  100% {
+    transform: perspective(1400px) rotateY(90deg);
+    filter: brightness(0.25) drop-shadow(20px 0 30px rgba(0,0,0,0.9));
+    opacity: 0.15;
+  }
+}
+
+@keyframes flipPagePrevIn {
+  0% {
+    transform: perspective(1400px) rotateY(-90deg);
+    filter: brightness(0.25) drop-shadow(-20px 0 30px rgba(0,0,0,0.9));
+    opacity: 0.15;
+  }
+  60% {
+    filter: brightness(0.75) drop-shadow(-10px 2px 18px rgba(0,0,0,0.55));
+  }
+  100% {
+    transform: perspective(1400px) rotateY(0deg);
+    filter: brightness(1);
+    opacity: 1;
+  }
+}
+
+/* === Keyframes for Sliding === */
+@keyframes slidePageNextOut {
+  0% { transform: translateX(0); opacity: 1; }
+  100% { transform: translateX(-100%); opacity: 0; }
+}
+@keyframes slidePageNextIn {
+  0% { transform: translateX(100%); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+@keyframes slidePagePrevOut {
+  0% { transform: translateX(0); opacity: 1; }
+  100% { transform: translateX(100%); opacity: 0; }
+}
+@keyframes slidePagePrevIn {
+  0% { transform: translateX(-100%); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+/* TOC panel slide-in animation */
+@keyframes tocSlideIn {
+  from { transform: translateX(-100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* Column Pagination Container */
+.reader-columns-container {
+  /* column-width is set dynamically via inline style (pixel value) */
+  column-gap: 40px;
+  height: 100%;
+  column-fill: auto;
+  overflow: visible;
+}
+
+
+.reader-columns-container p {
+  margin-bottom: 1.25rem;
+  text-align: justify;
+  text-indent: 1.5rem;
+}
+
+.reader-columns-container h1, 
+.reader-columns-container h2, 
+.reader-columns-container h3, 
+.reader-columns-container h4, 
+.reader-columns-container h5, 
+.reader-columns-container h6 {
+  break-after: avoid;
+  break-inside: avoid;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  color: var(--accent-secondary);
+}
+
+.reader-columns-container img {
+  max-width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  break-inside: avoid;
+  display: block;
+  margin: 1.5rem auto;
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+/* Task Details Screen (Fullscreen Mobile-Ready Layout) */
+.task-details-screen {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 100vh;
+  width: 100%;
+  overflow-y: auto;
+}
+
+.task-details-card {
+  width: 100%;
+  max-width: 640px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  border-radius: var(--radius-lg);
+  margin-bottom: 2rem;
+}
+
+@media (max-width: 640px) {
+  .task-details-screen {
+    padding: 0;
+  }
+  
+  .task-details-card {
+    border-radius: 0 !important;
+    min-height: 100vh;
+    border: none !important;
+    padding: 1.25rem 1rem !important;
+    box-shadow: none !important;
+    margin-bottom: 0;
+  }
+}
+
+/* Minimalist Redesign Utilities */
+
+/* 1. Redesigned Task Card */
+.task-card-redesign {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  position: relative;
+}
+
+.task-card-redesign:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-primary);
+  box-shadow: 0 8px 30px rgba(99, 102, 241, 0.12);
+}
+
+.task-card-selected {
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 8px 30px rgba(99, 102, 241, 0.16) !important;
+  background: rgba(99, 102, 241, 0.04) !important;
+}
+
+/* Accent left indicator using borderLeft */
+.task-accent-bar-q1 { border-left: 4px solid var(--accent-danger) !important; }
+.task-accent-bar-q2 { border-left: 4px solid var(--accent-secondary) !important; }
+.task-accent-bar-q3 { border-left: 4px solid var(--accent-warning) !important; }
+.task-accent-bar-q4 { border-left: 4px solid var(--text-muted) !important; }
+
+/* 2. Custom Checkbox */
+.custom-checkbox-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.custom-checkbox-input {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  height: 0;
+  width: 0;
+}
+
+.custom-checkbox-checkmark {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 20px;
+  width: 20px;
+  background-color: transparent;
+  border: 2px solid var(--text-muted);
+  border-radius: 50%;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+}
+
+.custom-checkbox-wrapper:hover .custom-checkbox-checkmark {
+  border-color: var(--accent-primary);
+}
+
+.custom-checkbox-input:checked ~ .custom-checkbox-checkmark {
+  background-color: var(--accent-success);
+  border-color: var(--accent-success);
+  color: #fff;
+}
+
+/* 3. Quadrant Header Badges */
+.quadrant-badge-q1 {
+  background: rgba(239, 68, 68, 0.08);
+  color: var(--accent-danger);
+  border: 1px solid rgba(239, 68, 68, 0.15);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.quadrant-badge-q2 {
+  background: rgba(168, 85, 247, 0.08);
+  color: var(--accent-secondary);
+  border: 1px solid rgba(168, 85, 247, 0.15);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.quadrant-badge-q3 {
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--accent-warning);
+  border: 1px solid rgba(245, 158, 11, 0.15);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.quadrant-badge-q4 {
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text-muted);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+/* 4. Modern Input Bar */
+.nlp-input-container {
+  background: var(--bg-card);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.nlp-input-container:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: 0 10px 30px rgba(99, 102, 241, 0.1);
+}
