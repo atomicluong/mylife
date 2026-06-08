@@ -1,15 +1,15 @@
-import React from 'react';
-import { 
-  LayoutDashboard, 
-  CheckSquare, 
-  Timer, 
-  DollarSign, 
-  Activity, 
-  Calendar, 
-  Kanban, 
+import React, { useState, useEffect } from 'react';
+import {
+  LayoutDashboard,
+  CheckSquare,
+  Timer,
+  DollarSign,
+  Activity,
+  Calendar,
+  Kanban,
   BookOpen,
-  Settings, 
-  Sun, 
+  Settings,
+  Sun,
   Moon,
   AlertCircle,
   Play,
@@ -20,15 +20,20 @@ import {
   ChevronLeft,
   Target,
   MessageSquare,
-  RefreshCw
+  RefreshCw,
+  Download,
+  Smartphone
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+const isInStandaloneMode = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+
 export default function Sidebar({ activeTab, setActiveTab, isSidebarOpen, setIsSidebarOpen }) {
-  const { 
-    user, 
-    preferences, 
-    setPreferences, 
+  const {
+    user,
+    preferences,
+    setPreferences,
     notifications,
     tasks,
     focusSessions,
@@ -37,6 +42,27 @@ export default function Sidebar({ activeTab, setActiveTab, isSidebarOpen, setIsS
     cancelFocusSession,
     timerDemoSpeed
   } = useApp();
+
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [showIOSHint, setShowIOSHint] = useState(false);
+  const [installed, setInstalled] = useState(isInStandaloneMode());
+
+  useEffect(() => {
+    const handler = (e) => { e.preventDefault(); setInstallPrompt(e); };
+    window.addEventListener('beforeinstallprompt', handler);
+    window.addEventListener('appinstalled', () => { setInstalled(true); setInstallPrompt(null); });
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstall = async () => {
+    if (isIOS()) { setShowIOSHint(h => !h); return; }
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === 'accepted') { setInstalled(true); setInstallPrompt(null); }
+  };
+
+  const canShowInstall = !installed && (installPrompt || isIOS());
 
   const formatTime = (secs) => {
     const mins = Math.floor(secs / 60);
@@ -338,6 +364,50 @@ export default function Sidebar({ activeTab, setActiveTab, isSidebarOpen, setIsS
             <div style={{ fontSize: '0.75rem', color: 'var(--accent-danger)', lineHeight: 1.3 }}>
               Cảnh báo chi tiêu! Kiểm tra tab tài chính.
             </div>
+          </div>
+        )}
+
+        {/* Install PWA Button */}
+        {canShowInstall && (
+          <div style={{ marginBottom: '0.5rem' }}>
+            <button
+              onClick={handleInstall}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                width: '100%',
+                padding: '0.65rem 1rem',
+                border: '1px solid var(--accent-primary)',
+                borderRadius: 'var(--radius-md)',
+                background: 'linear-gradient(135deg, rgba(134,59,255,0.15) 0%, rgba(99,102,241,0.1) 100%)',
+                color: 'var(--accent-primary)',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'var(--transition-smooth)'
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'linear-gradient(135deg, rgba(134,59,255,0.28) 0%, rgba(99,102,241,0.2) 100%)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'linear-gradient(135deg, rgba(134,59,255,0.15) 0%, rgba(99,102,241,0.1) 100%)'}
+            >
+              {isIOS() ? <Smartphone size={15} /> : <Download size={15} />}
+              Cài App về máy
+            </button>
+            {showIOSHint && (
+              <div style={{
+                marginTop: '0.5rem',
+                padding: '0.6rem 0.75rem',
+                background: 'rgba(134,59,255,0.08)',
+                border: '1px solid rgba(134,59,255,0.2)',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.75rem',
+                color: 'var(--text-secondary)',
+                lineHeight: 1.5
+              }}>
+                Trên Safari: nhấn <strong style={{color:'var(--accent-primary)'}}>nút Share</strong> (vuông + mũi tên) → <strong style={{color:'var(--accent-primary)'}}>Add to Home Screen</strong>
+              </div>
+            )}
           </div>
         )}
 
