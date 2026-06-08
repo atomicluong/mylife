@@ -128,7 +128,6 @@ function AppContent() {
         <BottomNav
           activeTab={activeTab}
           setActiveTab={handleTabChange}
-          onMenuOpen={() => setIsMobileMenuOpen(true)}
         />
       )}
     </div>

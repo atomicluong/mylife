@@ -84,21 +84,23 @@ export default function HabitTracker() {
     return <BookReader />;
   }
 
+  const isMobile = window.innerWidth <= 768;
+
   return (
-    <div className="slide-in" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      
+    <div className="slide-in" style={{ padding: isMobile ? '0.75rem' : '1.5rem', display: 'flex', flexDirection: 'column', gap: isMobile ? '0.75rem' : '1.5rem' }}>
+
       {/* Page Title & Category Filters */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', gap: isMobile ? '0.5rem' : '1.5rem', flexWrap: 'wrap', flexDirection: isMobile ? 'column' : 'row' }}>
           <div>
-            <h2 style={{ fontSize: '1.85rem', fontWeight: 800, margin: 0 }}>
-              {subTab === 'habits' ? 'Theo Dõi Thói Quen' : 'Đọc Sách'}
+            <h2 style={{ fontSize: isMobile ? '1.2rem' : '1.85rem', fontWeight: 800, margin: 0 }}>
+              {subTab === 'habits' ? (isMobile ? 'Thói Quen' : 'Theo Dõi Thói Quen') : 'Đọc Sách'}
             </h2>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
-              {subTab === 'habits' 
-                ? 'Xây dựng lối sống lành mạnh qua chuỗi ngày rèn luyện liên tục.' 
+            {!isMobile && <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
+              {subTab === 'habits'
+                ? 'Xây dựng lối sống lành mạnh qua chuỗi ngày rèn luyện liên tục.'
                 : 'Đọc sách trực tuyến, lập lịch trình đọc và theo dõi tiến độ của bạn.'}
-            </p>
+            </p>}
           </div>
 
           {/* Sub-tab switcher */}
@@ -145,7 +147,8 @@ export default function HabitTracker() {
             border: '1px solid var(--border-color)',
             borderRadius: '24px',
             padding: '4px',
-            gap: '2px'
+            gap: '2px',
+            flexWrap: 'wrap'
           }}>
             {categories.map(cat => {
               const Icon = cat.icon;
@@ -181,7 +184,7 @@ export default function HabitTracker() {
 
       {subTab === 'habits' ? (
         /* Main Grid: Habit panels & Create form */
-        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '1.5rem', alignItems: 'flex-start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.5fr 1fr', gap: isMobile ? '0.75rem' : '1.5rem', alignItems: 'flex-start' }}>
         
         {/* Left pane: Habits cards details list */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -195,15 +198,15 @@ export default function HabitTracker() {
               const isCompletedToday = habitLogs.some(log => log.habitId === habit.id && log.date === todayStr && log.completed);
 
               return (
-                <div 
-                  key={habit.id} 
-                  className="glass-panel" 
+                <div
+                  key={habit.id}
+                  className="glass-panel"
                   style={{
-                    padding: '1.25rem',
+                    padding: isMobile ? '0.75rem' : '1.25rem',
                     borderLeft: `5px solid ${habit.color}`,
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: '1rem',
+                    gap: isMobile ? '0.65rem' : '1rem',
                     position: 'relative'
                   }}
                 >
@@ -260,23 +263,23 @@ export default function HabitTracker() {
                   <div style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(3, 1fr)',
-                    gap: '0.75rem',
+                    gap: isMobile ? '0.4rem' : '0.75rem',
                     background: 'var(--bg-glass)',
-                    padding: '0.5rem 0.75rem',
+                    padding: isMobile ? '0.4rem 0.5rem' : '0.5rem 0.75rem',
                     borderRadius: '8px',
-                    fontSize: '0.78rem'
+                    fontSize: isMobile ? '0.72rem' : '0.78rem'
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Activity size={14} style={{ color: 'var(--accent-primary)' }} />
-                      <span>Chuỗi hiện tại: <strong>{stats.currentStreak} ngày</strong></span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                      <Activity size={12} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
+                      <span>{isMobile ? <><strong>{stats.currentStreak}d</strong> chuỗi</> : <>Chuỗi hiện tại: <strong>{stats.currentStreak} ngày</strong></>}</span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Award size={14} style={{ color: 'var(--accent-warning)' }} />
-                      <span>Kỷ lục: <strong>{stats.longestStreak} ngày</strong></span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                      <Award size={12} style={{ color: 'var(--accent-warning)', flexShrink: 0 }} />
+                      <span>{isMobile ? <><strong>{stats.longestStreak}d</strong> kỷ lục</> : <>Kỷ lục: <strong>{stats.longestStreak} ngày</strong></>}</span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <TrendingUp size={14} style={{ color: 'var(--accent-success)' }} />
-                      <span>Tỉ lệ (30 ngày): <strong>{stats.completionRate}%</strong></span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                      <TrendingUp size={12} style={{ color: 'var(--accent-success)', flexShrink: 0 }} />
+                      <span><strong>{stats.completionRate}%</strong>{!isMobile && ' (30 ngày)'}</span>
                     </div>
                   </div>
 

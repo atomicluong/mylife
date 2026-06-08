@@ -103,14 +103,16 @@ export default function FinanceTracker() {
   const hourlyRate = user.hourlyRate || 50;
   const equivalentHours = (parseFloat(oppCostAmount) / hourlyRate).toFixed(1);
 
+  const isMobile = window.innerWidth <= 768;
+
   return (
-    <div className="slide-in" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      
+    <div className="slide-in" style={{ padding: isMobile ? '0.75rem' : '1.5rem', display: 'flex', flexDirection: 'column', gap: isMobile ? '0.75rem' : '1.5rem' }}>
+
       {/* Top filter month & Summary stats card */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
-          <h2 style={{ fontSize: '1.85rem', fontWeight: 800, margin: 0 }}>Quản Lý Tài Chính</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Ứng dụng nguyên tắc ngân sách 50/30/20 để tích lũy tài sản.</p>
+          <h2 style={{ fontSize: isMobile ? '1.2rem' : '1.85rem', fontWeight: 800, margin: 0 }}>{isMobile ? 'Tài Chính' : 'Quản Lý Tài Chính'}</h2>
+          {!isMobile && <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Ứng dụng nguyên tắc ngân sách 50/30/20 để tích lũy tài sản.</p>}
         </div>
 
         {/* Month Selector */}
@@ -176,7 +178,7 @@ export default function FinanceTracker() {
       </div>
 
       {/* Main Grid: 50/30/20 meters & Log Transaction Form */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '1.5rem', alignItems: 'flex-start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.5fr 1fr', gap: isMobile ? '0.75rem' : '1.5rem', alignItems: 'flex-start' }}>
         
         {/* Left: 50/30/20 rule visual progress and transaction log */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -190,8 +192,8 @@ export default function FinanceTracker() {
 
             {/* Needs Row (50%) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', fontWeight: 600 }}>
-                <span>Thiết Yếu (Needs) - 50%</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: isMobile ? '0.78rem' : '0.85rem', fontWeight: 600 }}>
+                <span>{isMobile ? 'Thiết Yếu - 50%' : 'Thiết Yếu (Needs) - 50%'}</span>
                 <span style={{ color: spentNeeds > budgetNeedsLimit ? 'var(--accent-danger)' : 'var(--text-secondary)' }}>
                   ${spentNeeds} / ${Math.round(budgetNeedsLimit)}
                 </span>
@@ -213,8 +215,8 @@ export default function FinanceTracker() {
 
             {/* Wants Row (30%) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', fontWeight: 600 }}>
-                <span>Sở Thích (Wants) - 30%</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: isMobile ? '0.78rem' : '0.85rem', fontWeight: 600 }}>
+                <span>{isMobile ? 'Sở Thích - 30%' : 'Sở Thích (Wants) - 30%'}</span>
                 <span style={{ color: spentWants > budgetWantsLimit ? 'var(--accent-danger)' : 'var(--text-secondary)' }}>
                   ${spentWants} / ${Math.round(budgetWantsLimit)}
                 </span>
@@ -236,8 +238,8 @@ export default function FinanceTracker() {
 
             {/* Savings Row (20%) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', fontWeight: 600 }}>
-                <span>Tích Lũy & Trả Nợ (Savings) - 20%</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: isMobile ? '0.78rem' : '0.85rem', fontWeight: 600 }}>
+                <span>{isMobile ? 'Tiết Kiệm - 20%' : 'Tích Lũy & Trả Nợ (Savings) - 20%'}</span>
                 <span style={{ color: 'var(--text-secondary)' }}>
                   ${spentSavings} / ${Math.round(budgetSavingsLimit)}
                 </span>
