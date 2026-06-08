@@ -93,8 +93,9 @@ const sortTasksByTime = (taskList) => {
 };
 
 export default function TaskManager() {
-  const { 
-    tasks, 
+  const isMobile = window.innerWidth <= 768;
+  const {
+    tasks,
     setTasks,
     projects, 
     addTask, 
@@ -1796,10 +1797,10 @@ export default function TaskManager() {
 
   return (
     <div className="slide-in" style={{
-      padding: '1.5rem',
+      padding: isMobile ? '0.75rem' : '1.5rem',
       display: 'flex',
       flexDirection: 'column',
-      gap: '1.25rem',
+      gap: '1rem',
       height: '100%',
       minHeight: 'calc(100vh - 3rem)'
     }}>
@@ -1971,7 +1972,7 @@ export default function TaskManager() {
             {isInputExpanded && (
               <>
             {/* Row 1: Voice + Input + Project + Section + Add */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', flexWrap: 'wrap' }}>
               <button 
                 onClick={handleVoiceInput}
                 style={{
@@ -2214,8 +2215,8 @@ export default function TaskManager() {
           </div>
 
           {/* Filters & View Toggle Row */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
               {/* Search Input */}
               <div style={{
                 display: 'flex',
@@ -2225,7 +2226,8 @@ export default function TaskManager() {
                 border: '1px solid var(--border-color)',
                 padding: '0.4rem 0.75rem',
                 borderRadius: 'var(--radius-sm)',
-                width: '240px'
+                flex: isMobile ? 1 : 'none',
+                width: isMobile ? 'auto' : '240px'
               }}>
                 <Search size={14} style={{ color: 'var(--text-muted)' }} />
                 <input 
@@ -2393,17 +2395,17 @@ export default function TaskManager() {
               case 'eisenhower':
               default:
                 return (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: '1rem', width: '100%' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: isMobile ? '0.5rem' : '1rem', width: '100%' }}>
                     {/* Q1: Urgent & Important */}
                     <div 
                       className="glass-panel" 
                       onDragOver={handleMatrixDragOver}
                       onDrop={(e) => handleMatrixDrop(e, 'Q1')}
-                      style={{ padding: '1rem 1.2rem', minHeight: '180px', borderLeft: '4px solid var(--accent-danger)', position: 'relative' }}
+                      style={{ padding: isMobile ? '0.6rem' : '1rem 1.2rem', minHeight: '160px', borderLeft: '4px solid var(--accent-danger)', position: 'relative' }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                        <span className="quadrant-badge-q1">
-                          Q1: Khẩn cấp & Quan trọng (Làm ngay)
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                        <span className="quadrant-badge-q1" style={{ fontSize: isMobile ? '0.68rem' : undefined, padding: isMobile ? '4px 6px' : undefined }}>
+                          {isMobile ? 'Q1: Làm ngay' : 'Q1: Khẩn cấp & Quan trọng (Làm ngay)'}
                         </span>
                         <div 
                           onMouseEnter={() => setHoveredHelpQuadrant('Q1')}
@@ -2448,11 +2450,11 @@ export default function TaskManager() {
                       className="glass-panel" 
                       onDragOver={handleMatrixDragOver}
                       onDrop={(e) => handleMatrixDrop(e, 'Q2')}
-                      style={{ padding: '1rem 1.2rem', minHeight: '180px', borderLeft: '4px solid var(--accent-secondary)', position: 'relative' }}
+                      style={{ padding: isMobile ? '0.6rem' : '1rem 1.2rem', minHeight: '160px', borderLeft: '4px solid var(--accent-secondary)', position: 'relative' }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                        <span className="quadrant-badge-q2">
-                          Q2: Quan trọng · Lên kế hoạch
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                        <span className="quadrant-badge-q2" style={{ fontSize: isMobile ? '0.68rem' : undefined, padding: isMobile ? '4px 6px' : undefined }}>
+                          {isMobile ? 'Q2: Lên kế hoạch' : 'Q2: Quan trọng · Lên kế hoạch'}
                         </span>
                         <div 
                           onMouseEnter={() => setHoveredHelpQuadrant('Q2')}
@@ -2497,11 +2499,11 @@ export default function TaskManager() {
                       className="glass-panel" 
                       onDragOver={handleMatrixDragOver}
                       onDrop={(e) => handleMatrixDrop(e, 'Q3')}
-                      style={{ padding: '1rem 1.2rem', minHeight: '180px', borderLeft: '4px solid var(--accent-warning)', position: 'relative' }}
+                      style={{ padding: isMobile ? '0.6rem' : '1rem 1.2rem', minHeight: '160px', borderLeft: '4px solid var(--accent-warning)', position: 'relative' }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                        <span className="quadrant-badge-q3">
-                          Q3: Khẩn cấp · Ủy quyền
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                        <span className="quadrant-badge-q3" style={{ fontSize: isMobile ? '0.68rem' : undefined, padding: isMobile ? '4px 6px' : undefined }}>
+                          {isMobile ? 'Q3: Ủy quyền' : 'Q3: Khẩn cấp · Ủy quyền'}
                         </span>
                         <div 
                           onMouseEnter={() => setHoveredHelpQuadrant('Q3')}
@@ -2546,11 +2548,11 @@ export default function TaskManager() {
                       className="glass-panel" 
                       onDragOver={handleMatrixDragOver}
                       onDrop={(e) => handleMatrixDrop(e, 'Q4')}
-                      style={{ padding: '1rem 1.2rem', minHeight: '180px', borderLeft: '4px solid var(--text-muted)', position: 'relative' }}
+                      style={{ padding: isMobile ? '0.6rem' : '1rem 1.2rem', minHeight: '160px', borderLeft: '4px solid var(--text-muted)', position: 'relative' }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                        <span className="quadrant-badge-q4">
-                          Q4: Không quan trọng · Loại bỏ
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                        <span className="quadrant-badge-q4" style={{ fontSize: isMobile ? '0.68rem' : undefined, padding: isMobile ? '4px 6px' : undefined }}>
+                          {isMobile ? 'Q4: Loại bỏ' : 'Q4: Không quan trọng · Loại bỏ'}
                         </span>
                         <div 
                           onMouseEnter={() => setHoveredHelpQuadrant('Q4')}
