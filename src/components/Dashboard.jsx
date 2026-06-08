@@ -87,23 +87,25 @@ export default function Dashboard({ setActiveTab }) {
 
   const maxChartValue = Math.max(...chartData.map(d => Math.max(d.income, d.expense, 50)));
 
+  const isMobile = window.innerWidth <= 768;
+
   return (
-    <div className="slide-in" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      
+    <div className="slide-in" style={{ padding: isMobile ? '1rem' : '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+
       {/* Header Greeting */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
         <div>
-          <h2 style={{ fontSize: '1.85rem', fontWeight: 800, margin: 0 }}>Chào buổi sáng, {user.name}! 👋</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginTop: '0.25rem' }}>
-            Hôm nay là {new Date().toLocaleDateString('vi-VN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}. Hãy làm việc hiệu quả nhé!
+          <h2 style={{ fontSize: isMobile ? '1.3rem' : '1.85rem', fontWeight: 800, margin: 0 }}>Chào, {user.name}! 👋</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+            {new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long' })}
           </p>
         </div>
         <div style={{
           background: 'var(--bg-glass)',
           border: '1px solid var(--border-color)',
           borderRadius: 'var(--radius-md)',
-          padding: '0.5rem 1rem',
-          fontSize: '0.9rem',
+          padding: '0.4rem 0.75rem',
+          fontSize: '0.85rem',
           fontWeight: 600
         }}>
           Tỉ giá/giờ: <span style={{ color: 'var(--accent-success)' }}>${user.hourlyRate}/h</span>

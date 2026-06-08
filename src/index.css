@@ -198,7 +198,7 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--text-muted);
 }
 
-/* Simple Flex Grid Helper */
+/* Layout */
 .app-container {
   display: grid;
   grid-template-columns: 260px 1fr;
@@ -209,9 +209,48 @@ h1, h2, h3, h4, h5, h6 {
   grid-template-columns: 1fr !important;
 }
 
-@media (max-width: 1024px) {
+/* ── Mobile ────────────────────────────────────────────── */
+@media (max-width: 768px) {
   .app-container {
     grid-template-columns: 1fr;
+  }
+
+  /* Safe area cho notch / home indicator */
+  body {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  /* Tăng touch target tối thiểu 44px */
+  button, a, [role="button"] {
+    min-height: 44px;
+  }
+
+  /* Ẩn scrollbar trên mobile để gọn hơn */
+  ::-webkit-scrollbar { width: 0; height: 0; }
+
+  /* Padding nội dung trong các màn hình */
+  .mobile-px { padding-left: 1rem !important; padding-right: 1rem !important; }
+
+  /* Card grid: 1 cột trên mobile */
+  .mobile-stack {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Ẩn các cột phụ không cần thiết trên mobile */
+  .mobile-hidden { display: none !important; }
+
+  /* Font nhỏ hơn một chút trên mobile */
+  h1 { font-size: 1.4rem !important; }
+  h2 { font-size: 1.15rem !important; }
+  h3 { font-size: 1rem !important; }
+
+  /* Glass panel margin nhỏ hơn */
+  .glass-panel { border-radius: 14px; }
+
+  /* Bảng overflow ngang */
+  .table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 }
 
