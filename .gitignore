@@ -12,6 +12,18 @@ dist
 dist-ssr
 *.local
 
+# Vite cache
+.vite-cache/
+
+# Temp folders & archives
+temp_redesign/
+*.zip
+
+# Local scripts & data
+crawler.cjs
+run_timeflow.bat
+timeflow_scraped_books.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -22,3 +34,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Env files
+.env
+.env.local
+.env.*.local
