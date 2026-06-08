@@ -1876,8 +1876,6 @@ export default function TaskManager() {
       display: 'flex',
       flexDirection: 'column',
       gap: '1rem',
-      height: '100%',
-      minHeight: 'calc(100vh - 3rem)'
     }}>
       
       {/* Top Header: Projects in Horizontal Layout */}
