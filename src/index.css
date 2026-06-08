@@ -218,12 +218,6 @@ h1, h2, h3, h4, h5, h6 {
   /* Safe area cho notch / home indicator */
   body {
     padding-top: env(safe-area-inset-top);
-    overflow-x: hidden;
-  }
-
-  /* app-container không cần giới hạn chiều cao trên mobile */
-  .app-container {
-    min-height: 100dvh;
   }
 
   /* Tăng touch target tối thiểu 44px */

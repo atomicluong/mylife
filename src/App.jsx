@@ -114,14 +114,14 @@ function AppContent() {
 
       <main style={{
         flex: 1,
-        overflowY: isMobile ? 'visible' : (isReaderFullscreen ? 'hidden' : 'auto'),
-        height: isMobile ? 'auto' : '100vh',
+        overflowY: isReaderFullscreen ? 'hidden' : 'auto',
+        height: '100vh',
         paddingBottom: isMobile ? 0 : (hideSidebar ? '0' : '3rem'),
         paddingLeft: showToggleOpenButton ? '4.5rem' : '0',
         transition: 'padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
       }}>
         {renderActiveView()}
-        {/* Spacer đẩy nội dung lên trên bottom nav trên mobile */}
+        {/* Spacer — thêm khoảng trống thật ở cuối để không bị bottom nav che */}
         {isMobile && !isReaderFullscreen && (
           <div style={{ height: 'calc(80px + env(safe-area-inset-bottom))', flexShrink: 0 }} aria-hidden />
         )}
