@@ -22,6 +22,8 @@ import {
   ArrowUp,
   ArrowDown,
   Play,
+  Pause,
+  Square,
   Lightbulb
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -113,8 +115,17 @@ export default function TaskManager() {
     selectedTaskId,
     setSelectedTaskId,
     startFocusOnTask,
+    focusSessions,
+    toggleFocusSession,
+    stopAndLogFocusSession,
     getRealWeatherForHour: getWeatherForHour
   } = useApp();
+
+  const formatFocusTime = (secs) => {
+    const m = Math.floor(Math.abs(secs) / 60);
+    const s = Math.abs(secs) % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
 
   const [activeList, setActiveList] = useState('proj-work');
   const [inputText, setInputText] = useState('');
@@ -1377,6 +1388,7 @@ export default function TaskManager() {
   };
 
   if (selectedTask) {
+    const taskSession = focusSessions.find(s => s.taskId === selectedTask.id);
     return (
       <div className="slide-in task-details-screen">
         <div className="glass-panel task-details-card">
@@ -1791,6 +1803,69 @@ export default function TaskManager() {
             </button>
           </div>
         </div>
+
+        {/* Mini Pomodoro timer — fixed bottom bar khi có session đang chạy */}
+        {taskSession && (
+          <div style={{
+            position: 'fixed',
+            bottom: 0, left: 0, right: 0,
+            zIndex: 210,
+            background: 'var(--bg-card)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            borderTop: `2px solid ${taskSession.isActive ? 'var(--accent-primary)' : 'var(--border-color)'}`,
+            padding: '0.55rem 1rem',
+            paddingBottom: 'calc(0.55rem + env(safe-area-inset-bottom))',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            transition: 'border-color 0.3s'
+          }}>
+            {/* Pulse dot */}
+            <div style={{
+              width: 9, height: 9, borderRadius: '50%', flexShrink: 0,
+              background: taskSession.isActive ? 'var(--accent-success)' : 'var(--accent-warning)',
+              boxShadow: taskSession.isActive ? '0 0 8px var(--accent-success)' : 'none',
+              animation: taskSession.isActive ? 'pulse 1.5s ease-in-out infinite' : 'none'
+            }} />
+            <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`}</style>
+
+            {/* Name */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', lineHeight: 1 }}>
+                {taskSession.isActive ? 'Đang tập trung' : 'Tạm dừng'}
+              </div>
+              <div style={{ fontSize: '0.82rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }}>
+                {taskSession.subtaskId
+                  ? selectedTask.subtasks?.find(s => s.id === taskSession.subtaskId)?.title || selectedTask.title
+                  : selectedTask.title}
+              </div>
+            </div>
+
+            {/* Time display */}
+            <span style={{ fontSize: '1.15rem', fontWeight: 800, fontFamily: 'monospace', color: 'var(--accent-primary)', flexShrink: 0 }}>
+              {formatFocusTime(taskSession.secondsLeft)}
+            </span>
+
+            {/* Pause / Resume */}
+            <button
+              onClick={() => toggleFocusSession(taskSession.id)}
+              style={{ border: 'none', background: 'var(--bg-glass)', color: 'var(--text-primary)', borderRadius: '8px', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+              title={taskSession.isActive ? 'Tạm dừng' : 'Tiếp tục'}
+            >
+              {taskSession.isActive ? <Pause size={16} /> : <Play size={16} fill="currentColor" />}
+            </button>
+
+            {/* Stop & Log */}
+            <button
+              onClick={() => stopAndLogFocusSession(taskSession.id)}
+              style={{ border: 'none', background: 'rgba(239,68,68,0.1)', color: 'var(--accent-danger)', borderRadius: '8px', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+              title="Kết thúc & lưu"
+            >
+              <Square size={14} fill="currentColor" />
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -2274,7 +2349,7 @@ export default function TaskManager() {
             </div>
 
             {/* Calendar Navigation and Time Range Selector Group */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
               {/* Date Navigation Toolbar */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <button 

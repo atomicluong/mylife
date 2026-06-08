@@ -116,7 +116,7 @@ function AppContent() {
         flex: 1,
         overflowY: isReaderFullscreen ? 'hidden' : 'auto',
         height: '100vh',
-        paddingBottom: isMobile ? 'calc(64px + env(safe-area-inset-bottom))' : (hideSidebar ? '0' : '3rem'),
+        paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : (hideSidebar ? '0' : '3rem'),
         paddingLeft: showToggleOpenButton ? '4.5rem' : '0',
         transition: 'padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
       }}>
