@@ -332,41 +332,46 @@ Hãy phân tích mục tiêu này và lập kế hoạch OKR chi tiết bằng J
     }, 2000);
   };
 
+  const isMobile = window.innerWidth <= 768;
+
   return (
-    <div className="slide-in" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', minHeight: '100%' }}>
-      
+    <div className="slide-in" style={{ padding: isMobile ? '0.75rem' : '1.5rem', display: 'flex', flexDirection: 'column', gap: isMobile ? '0.75rem' : '1.5rem', minHeight: '100%' }}>
+
       {/* Header section with Buttons */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
-          <h2 style={{ fontSize: '1.85rem', fontWeight: 800, margin: 0 }}>Mục Tiêu & Kết Quả Then Chốt (OKRs)</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Quản trị Solopreneur theo mục tiêu định lượng bài bản, kết nối live dữ liệu tài chính.</p>
+          <h2 style={{ fontSize: isMobile ? '1.2rem' : '1.85rem', fontWeight: 800, margin: 0 }}>{isMobile ? 'OKRs' : 'Mục Tiêu & Kết Quả Then Chốt (OKRs)'}</h2>
+          {!isMobile && <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Quản trị Solopreneur theo mục tiêu định lượng bài bản, kết nối live dữ liệu tài chính.</p>}
         </div>
 
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <button 
-            className="btn-primary" 
-            style={{ 
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button
+            className="btn-primary"
+            style={{
               background: 'linear-gradient(135deg, var(--accent-secondary) 0%, #ec4899 100%)',
-              boxShadow: '0 4px 15px rgba(139, 92, 246, 0.3)'
+              boxShadow: '0 4px 15px rgba(139, 92, 246, 0.3)',
+              padding: isMobile ? '0.45rem 0.75rem' : undefined,
+              fontSize: isMobile ? '0.8rem' : undefined
             }}
             onClick={() => setIsAiPanelOpen(true)}
           >
-            <Sparkles size={18} />
-            <span>Gemini AI Architect</span>
+            <Sparkles size={isMobile ? 15 : 18} />
+            <span>{isMobile ? 'AI' : 'Gemini AI Architect'}</span>
           </button>
-          
-          <button 
+
+          <button
             className="btn-secondary"
+            style={{ padding: isMobile ? '0.45rem 0.75rem' : undefined, fontSize: isMobile ? '0.8rem' : undefined }}
             onClick={() => setIsObjModalOpen(true)}
           >
-            <Plus size={18} />
-            <span>Thêm Mục Tiêu</span>
+            <Plus size={isMobile ? 15 : 18} />
+            <span>{isMobile ? 'Thêm' : 'Thêm Mục Tiêu'}</span>
           </button>
         </div>
       </div>
 
       {/* Main Layout Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: isAiPanelOpen ? '1fr 380px' : '1fr', gap: '1.5rem', transition: 'grid-template-columns var(--transition-smooth)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isAiPanelOpen && !isMobile ? '1fr 380px' : '1fr', gap: '1.5rem', transition: 'grid-template-columns var(--transition-smooth)' }}>
         
         {/* Left Side: OKR List */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -408,12 +413,12 @@ Hãy phân tích mục tiêu này và lập kế hoạch OKR chi tiết bằng J
                   }}
                 >
                   {/* Objective Header Card */}
-                  <div 
-                    style={{ 
-                      padding: '1.25rem', 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center', 
+                  <div
+                    style={{
+                      padding: isMobile ? '0.75rem' : '1.25rem',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
                       cursor: 'pointer',
                       background: 'rgba(255, 255, 255, 0.01)',
                       borderBottom: isExpanded ? '1px solid var(--border-color)' : 'none',
@@ -421,29 +426,29 @@ Hãy phân tích mục tiêu này và lập kế hoạch OKR chi tiết bằng J
                     }}
                     onClick={() => toggleObjectiveExpand(obj.id)}
                   >
-                    <div style={{ flex: 1, paddingRight: '1rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.35rem' }}>
-                        <span style={{ 
-                          fontSize: '0.72rem', 
-                          fontWeight: 700, 
-                          padding: '2px 8px', 
-                          borderRadius: '20px', 
+                    <div style={{ flex: 1, paddingRight: isMobile ? '0.5rem' : '1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem', flexWrap: 'wrap' }}>
+                        <span style={{
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          padding: '2px 6px',
+                          borderRadius: '20px',
                           background: obj.category === 'Kinh doanh' ? 'rgba(99, 102, 241, 0.15)' : 'rgba(16, 185, 129, 0.15)',
                           color: obj.category === 'Kinh doanh' ? 'var(--accent-secondary)' : 'var(--accent-success)',
                           textTransform: 'uppercase'
                         }}>
                           {obj.category}
                         </span>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          {objKrs.length} Kết quả then chốt
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                          {objKrs.length} KR
                         </span>
                       </div>
-                      
-                      <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.3, margin: 0 }}>
+
+                      <h3 style={{ fontSize: isMobile ? '0.95rem' : '1.2rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.3, margin: 0 }}>
                         {obj.title}
                       </h3>
-                      
-                      {obj.description && (
+
+                      {obj.description && !isMobile && (
                         <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.35rem', lineHeight: 1.4 }}>
                           {obj.description}
                         </p>
@@ -451,20 +456,20 @@ Hãy phân tích mục tiêu này và lập kế hoạch OKR chi tiết bằng J
                     </div>
 
                     {/* Progress Indicator and Action Toggle */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '0.5rem' : '1.25rem' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                        <span style={{ 
-                          fontSize: '1.25rem', 
-                          fontWeight: 800, 
+                        <span style={{
+                          fontSize: isMobile ? '1rem' : '1.25rem',
+                          fontWeight: 800,
                           color: progress >= 100 ? 'var(--accent-success)' : 'var(--text-primary)',
                           fontFamily: 'var(--font-display)'
                         }}>
                           {progress}%
                         </span>
-                        <div style={{ width: '80px', height: '6px', background: 'var(--border-color)', borderRadius: '3px', overflow: 'hidden', marginTop: '4px' }}>
-                          <div style={{ 
-                            width: `${progress}%`, 
-                            height: '100%', 
+                        <div style={{ width: isMobile ? '50px' : '80px', height: '5px', background: 'var(--border-color)', borderRadius: '3px', overflow: 'hidden', marginTop: '4px' }}>
+                          <div style={{
+                            width: `${progress}%`,
+                            height: '100%',
                             background: progress >= 100 ? 'var(--accent-success)' : 'var(--accent-primary)',
                             borderRadius: '3px'
                           }} />
@@ -505,7 +510,7 @@ Hãy phân tích mục tiêu này và lập kế hoạch OKR chi tiết bằng J
 
                   {/* Objective KRs Area */}
                   {isExpanded && (
-                    <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', background: 'rgba(255, 255, 255, 0.005)' }}>
+                    <div style={{ padding: isMobile ? '0.75rem' : '1.25rem', display: 'flex', flexDirection: 'column', gap: isMobile ? '0.75rem' : '1.25rem', background: 'rgba(255, 255, 255, 0.005)' }}>
                       
                       {objKrs.length === 0 ? (
                         <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
@@ -530,7 +535,7 @@ Hãy phân tích mục tiêu này và lập kế hoạch OKR chi tiết bằng J
                             >
                               {/* KR Title & Progress Stats */}
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                <div style={{ flex: 1, minWidth: '200px' }}>
+                                <div style={{ flex: 1, minWidth: isMobile ? '100%' : '200px' }}>
                                   <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     <Target size={14} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
                                     {kr.title}
@@ -906,9 +911,9 @@ Hãy phân tích mục tiêu này và lập kế hoạch OKR chi tiết bằng J
           justifyContent: 'center',
           zIndex: 1000
         }}>
-          <div className="glass-panel animate-scale" style={{ width: '450px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div className="glass-panel animate-scale" style={{ width: isMobile ? 'calc(100vw - 2rem)' : '450px', maxWidth: '450px', padding: isMobile ? '1rem' : '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Thêm Mục Tiêu Mới (Objective)</h3>
+              <h3 style={{ fontSize: isMobile ? '1rem' : '1.25rem', fontWeight: 800 }}>Thêm Mục Tiêu Mới</h3>
               <button 
                 onClick={() => setIsObjModalOpen(false)}
                 style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
@@ -1020,9 +1025,9 @@ Hãy phân tích mục tiêu này và lập kế hoạch OKR chi tiết bằng J
           justifyContent: 'center',
           zIndex: 1000
         }}>
-          <div className="glass-panel animate-scale" style={{ width: '450px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div className="glass-panel animate-scale" style={{ width: isMobile ? 'calc(100vw - 2rem)' : '450px', maxWidth: '450px', padding: isMobile ? '1rem' : '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Thêm Kết Quả Then Chốt (Key Result)</h3>
+              <h3 style={{ fontSize: isMobile ? '1rem' : '1.25rem', fontWeight: 800 }}>Thêm Kết Quả Then Chốt</h3>
               <button 
                 onClick={() => setIsKrModalOpen(false)}
                 style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
