@@ -14,11 +14,11 @@ import { useApp } from '../context/AppContext';
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Home',      icon: LayoutDashboard },
   { id: 'tasks',     label: 'Kế hoạch',  icon: CheckSquare },
+  { id: 'notes',     label: 'Ghi chú',   icon: PenTool },
   { id: 'okrs',      label: 'OKRs',      icon: Target },
   { id: 'habits',    label: 'Thói quen', icon: Activity },
   { id: 'finance',   label: 'Tài chính', icon: DollarSign },
   { id: 'ai-chat',   label: 'AI Chat',   icon: MessageSquare },
-  { id: 'notes',     label: 'Ghi chú',   icon: PenTool },
   { id: 'settings',  label: 'Thiết lập', icon: Settings },
 ];
 
