@@ -3,7 +3,7 @@ import {
   Undo2, Redo2, Save, Plus, Trash2,
   Eraser, ChevronLeft, ZoomIn, ZoomOut, Maximize2,
   Check, Menu, MousePointer2, Minus, Square, Download,
-  Circle as CircleIcon,
+  Circle as CircleIcon, ChevronDown,
 } from 'lucide-react';
 import { notesDb } from '../utils/notesDb';
 
@@ -27,17 +27,23 @@ const COLORS = [
   '#FFFFFF',
 ];
 
-// Canvas background configs
 const BG_OPTIONS = [
-  { id: 'blank',       label: 'Trắng',              base: '#FEFDF8' },
-  { id: 'dots',        label: 'Chấm bi',             base: '#FEFDF8' },
-  { id: 'lines',       label: 'Dòng kẻ',             base: '#FEFDF8' },
-  { id: 'grid',        label: 'Lưới ô',              base: '#FEFDF8' },
-  { id: 'aged_plain',  label: 'Sách cũ — Trơn',      base: '#f2e8ce' },
-  { id: 'aged',        label: 'Sách cũ — Kẻ dòng',   base: '#f2e8ce' },
-  { id: 'aged_grid',   label: 'Sách cũ — Lưới',      base: '#f2e8ce' },
+  { id: 'blank',      label: 'Trắng',              base: '#FEFDF8' },
+  { id: 'dots',       label: 'Chấm bi',             base: '#FEFDF8' },
+  { id: 'lines',      label: 'Dòng kẻ',             base: '#FEFDF8' },
+  { id: 'grid',       label: 'Lưới ô',              base: '#FEFDF8' },
+  { id: 'aged_plain', label: 'Sách cũ — Trơn',      base: '#f2e8ce' },
+  { id: 'aged',       label: 'Sách cũ — Kẻ dòng',  base: '#f2e8ce' },
+  { id: 'aged_grid',  label: 'Sách cũ — Lưới',      base: '#f2e8ce' },
 ];
 
+const SHAPE_OPTIONS = [
+  { id: 'line',   label: 'Đường thẳng', Icon: Minus },
+  { id: 'rect',   label: 'Chữ nhật',   Icon: Square },
+  { id: 'circle', label: 'Hình tròn',  Icon: CircleIcon },
+];
+
+// Tiny helpers
 function ToolBtn({ active, onClick, title, children }) {
   return (
     <button onClick={onClick} title={title} style={{
@@ -46,7 +52,7 @@ function ToolBtn({ active, onClick, title, children }) {
       color: active ? '#5c33c1' : '#555',
       borderRadius: '7px', padding: '5px 7px', cursor: 'pointer',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      transition: 'all 0.12s', minWidth: '32px', minHeight: '32px', flexShrink: 0,
+      transition: 'all 0.1s', minWidth: '30px', minHeight: '30px', flexShrink: 0,
     }}>
       {children}
     </button>
@@ -54,7 +60,17 @@ function ToolBtn({ active, onClick, title, children }) {
 }
 
 function Sep() {
-  return <div style={{ width: '1px', height: '28px', background: '#e5e5e5', margin: '0 6px', flexShrink: 0 }} />;
+  return <div style={{ width: '1px', height: '26px', background: '#e5e5e5', margin: '0 4px', flexShrink: 0 }} />;
+}
+
+// Open popup: calculate position, flip up if near bottom of viewport
+function calcPopupPos(btnRef, approxHeight = 300) {
+  const rect = btnRef.current?.getBoundingClientRect();
+  if (!rect) return { top: 100, left: 0 };
+  const spaceBelow = window.innerHeight - rect.bottom - 8;
+  const top = spaceBelow >= approxHeight ? rect.bottom + 6 : rect.top - approxHeight - 6;
+  const left = Math.min(rect.left, window.innerWidth - 220);
+  return { top: Math.max(8, top), left: Math.max(8, left) };
 }
 
 export default function HandwrittenNotes() {
@@ -72,28 +88,33 @@ export default function HandwrittenNotes() {
   const [lineWidth, setLineWidth]             = useState(3);
   const [background, setBackground]           = useState('dots');
 
-  const [offsetX, setOffsetX]                 = useState(0);
-  const [offsetY, setOffsetY]                 = useState(0);
-  const [zoomScale, setZoomScale]             = useState(1);
+  const [offsetX, setOffsetX]   = useState(0);
+  const [offsetY, setOffsetY]   = useState(0);
+  const [zoomScale, setZoomScale] = useState(1);
 
-  const [selectedIds, setSelectedIds]         = useState(new Set());
-  const [saveStatus, setSaveStatus]           = useState('idle');
-  const [isSidebarOpen, setIsSidebarOpen]     = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [saveStatus, setSaveStatus]   = useState('idle');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Picker popups use position:fixed to escape overflowX:auto clipping
-  const [showColorPicker, setShowColorPicker] = useState(false);
-  const [colorPickerPos, setColorPickerPos]   = useState({ top: 0, left: 0 });
-  const [showBgPicker, setShowBgPicker]       = useState(false);
-  const [bgPickerPos, setBgPickerPos]         = useState({ top: 0, left: 0 });
+  // Popups — all use position:fixed to escape toolbar overflow clipping
+  const [showColorPicker, setShowColorPicker]   = useState(false);
+  const [colorPickerPos, setColorPickerPos]     = useState({ top: 0, left: 0 });
+  const [showBgPicker, setShowBgPicker]         = useState(false);
+  const [bgPickerPos, setBgPickerPos]           = useState({ top: 0, left: 0 });
+  const [showShapePicker, setShowShapePicker]   = useState(false);
+  const [shapePickerPos, setShapePickerPos]     = useState({ top: 0, left: 0 });
   const colorBtnRef = useRef(null);
   const bgBtnRef    = useRef(null);
+  const shapeBtnRef = useRef(null);
 
-  const [history, setHistory]                 = useState([[]]);
-  const [historyIndex, setHistoryIndex]       = useState(0);
+  const [history, setHistory]         = useState([[]]);
+  const [historyIndex, setHistoryIndex] = useState(0);
 
-  // Canvas refs
-  const canvasRef        = useRef(null);
-  const containerRef     = useRef(null);
+  // Two canvas layers — eliminates getImageData/putImageData overhead
+  const committedCanvasRef = useRef(null); // background + saved strokes
+  const liveCanvasRef      = useRef(null); // current stroke / preview (transparent base)
+  const containerRef       = useRef(null);
+
   const isDrawing        = useRef(false);
   const currentPoints    = useRef([]);
   const shapeStart       = useRef(null);
@@ -103,33 +124,31 @@ export default function HandwrittenNotes() {
   const initialPinchDist = useRef(0);
   const initialPinchZoom = useRef(1);
   const hasErased        = useRef(false);
-  // Snapshot for low-latency live drawing (avoids full re-render on every pointermove)
-  const snapshotRef      = useRef(null);
 
-  // Mirror every state value into a ref for use inside event handlers
-  const strokesRef      = useRef(strokes);
-  const offsetXRef      = useRef(offsetX);
-  const offsetYRef      = useRef(offsetY);
-  const zoomRef         = useRef(zoomScale);
-  const toolRef         = useRef(tool);
-  const colorRef        = useRef(color);
-  const lwRef           = useRef(lineWidth);
-  const bgRef           = useRef(background);
-  const selRef          = useRef(selectedIds);
-  const histRef         = useRef(history);
-  const histIdxRef      = useRef(historyIndex);
+  // Refs that mirror state for use inside event handlers (avoid stale closures)
+  const strokesRef  = useRef(strokes);
+  const offsetXRef  = useRef(offsetX);
+  const offsetYRef  = useRef(offsetY);
+  const zoomRef     = useRef(zoomScale);
+  const toolRef     = useRef(tool);
+  const colorRef    = useRef(color);
+  const lwRef       = useRef(lineWidth);
+  const bgRef       = useRef(background);
+  const selRef      = useRef(selectedIds);
+  const histRef     = useRef(history);
+  const histIdxRef  = useRef(historyIndex);
 
-  useEffect(() => { strokesRef.current  = strokes; },       [strokes]);
-  useEffect(() => { offsetXRef.current  = offsetX; },       [offsetX]);
-  useEffect(() => { offsetYRef.current  = offsetY; },       [offsetY]);
-  useEffect(() => { zoomRef.current     = zoomScale; },     [zoomScale]);
-  useEffect(() => { toolRef.current     = tool; },          [tool]);
-  useEffect(() => { colorRef.current    = color; },         [color]);
-  useEffect(() => { lwRef.current       = lineWidth; },     [lineWidth]);
-  useEffect(() => { bgRef.current       = background; },    [background]);
-  useEffect(() => { selRef.current      = selectedIds; },   [selectedIds]);
-  useEffect(() => { histRef.current     = history; },       [history]);
-  useEffect(() => { histIdxRef.current  = historyIndex; },  [historyIndex]);
+  useEffect(() => { strokesRef.current = strokes; },      [strokes]);
+  useEffect(() => { offsetXRef.current = offsetX; },      [offsetX]);
+  useEffect(() => { offsetYRef.current = offsetY; },      [offsetY]);
+  useEffect(() => { zoomRef.current    = zoomScale; },    [zoomScale]);
+  useEffect(() => { toolRef.current    = tool; },         [tool]);
+  useEffect(() => { colorRef.current   = color; },        [color]);
+  useEffect(() => { lwRef.current      = lineWidth; },    [lineWidth]);
+  useEffect(() => { bgRef.current      = background; },   [background]);
+  useEffect(() => { selRef.current     = selectedIds; },  [selectedIds]);
+  useEffect(() => { histRef.current    = history; },      [history]);
+  useEffect(() => { histIdxRef.current = historyIndex; }, [historyIndex]);
 
   // ── DB ──────────────────────────────────────────────────────────────
   useEffect(() => { loadAll(); }, []);
@@ -145,9 +164,9 @@ export default function HandwrittenNotes() {
 
   const openNote = (note) => {
     setCurrentNoteId(note.id);
-    setNoteTitle(note.title);   setTitleInput(note.title);
+    setNoteTitle(note.title);  setTitleInput(note.title);
     setStrokes(note.strokes || []);
-    setOffsetX(note.offsetX || 0);   setOffsetY(note.offsetY || 0);
+    setOffsetX(note.offsetX || 0);  setOffsetY(note.offsetY || 0);
     setZoomScale(note.zoomScale || 1);
     setBackground(note.background || 'dots');
     setSelectedIds(new Set());
@@ -190,8 +209,7 @@ export default function HandwrittenNotes() {
       });
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
-      const all = await notesDb.getAllNotes();
-      setNotes(all);
+      setNotes(await notesDb.getAllNotes());
     } catch (e) { setSaveStatus('error'); setTimeout(() => setSaveStatus('idle'), 3000); }
   };
 
@@ -237,9 +255,9 @@ export default function HandwrittenNotes() {
     }
   };
 
-  // ── Canvas helpers ───────────────────────────────────────────────────
+  // ── Canvas geometry ──────────────────────────────────────────────────
   const toWorld = (clientX, clientY) => {
-    const r = canvasRef.current?.getBoundingClientRect();
+    const r = liveCanvasRef.current?.getBoundingClientRect();
     if (!r) return { worldX: 0, worldY: 0 };
     return {
       worldX: (clientX - r.left - offsetXRef.current) / zoomRef.current,
@@ -247,33 +265,17 @@ export default function HandwrittenNotes() {
     };
   };
 
-  // Snapshot: captures the committed canvas state so pointermove can restore + draw cheaply
-  const takeSnapshot = () => {
-    const c = canvasRef.current;
-    if (!c) return;
-    snapshotRef.current = c.getContext('2d').getImageData(0, 0, c.width, c.height);
-  };
-
-  const restoreSnapshot = () => {
-    const c = canvasRef.current;
-    if (!c || !snapshotRef.current) return false;
-    c.getContext('2d').putImageData(snapshotRef.current, 0, 0);
-    return true;
-  };
-
-  // ── Full render (committed state) ────────────────────────────────────
-  const renderCanvas = () => {
-    const canvas = canvasRef.current;
+  // ── Committed canvas render (background + saved strokes) ─────────────
+  const renderCommitted = () => {
+    const canvas = committedCanvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
     const W = canvas.width / dpr, H = canvas.height / dpr;
 
     ctx.clearRect(0, 0, W, H);
-
     const bg = bgRef.current;
-    const baseBg = BG_OPTIONS.find(b => b.id === bg)?.base ?? '#FEFDF8';
-    ctx.fillStyle = baseBg;
+    ctx.fillStyle = BG_OPTIONS.find(b => b.id === bg)?.base ?? '#FEFDF8';
     ctx.fillRect(0, 0, W, H);
 
     drawBackground(ctx, W, H);
@@ -281,7 +283,6 @@ export default function HandwrittenNotes() {
     ctx.save();
     ctx.translate(offsetXRef.current, offsetYRef.current);
     ctx.scale(zoomRef.current, zoomRef.current);
-
     paintStrokes(ctx, strokesRef.current);
 
     // Selection highlight
@@ -304,19 +305,32 @@ export default function HandwrittenNotes() {
     ctx.restore();
   };
 
-  // ── Live draw (called on pointermove — restores snapshot then draws current stroke) ──
-  const drawLive = () => {
-    if (!restoreSnapshot()) { renderCanvas(); return; }
+  // ── Live canvas: clear ───────────────────────────────────────────────
+  const clearLive = () => {
+    const c = liveCanvasRef.current;
+    if (!c) return;
+    const dpr = window.devicePixelRatio || 1;
+    c.getContext('2d').clearRect(0, 0, c.width / dpr, c.height / dpr);
+  };
 
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const t = toolRef.current;
+  // Copy committed → live, then draw preview (for lasso/shapes)
+  const drawLivePreview = () => {
+    const live = liveCanvasRef.current;
+    const committed = committedCanvasRef.current;
+    if (!live || !committed) return;
+    const ctx = live.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const W = live.width / dpr, H = live.height / dpr;
+
+    ctx.clearRect(0, 0, W, H);
+    // GPU-accelerated copy — much faster than getImageData
+    ctx.drawImage(committed, 0, 0, W, H);
 
     ctx.save();
     ctx.translate(offsetXRef.current, offsetYRef.current);
     ctx.scale(zoomRef.current, zoomRef.current);
 
+    const t = toolRef.current;
     if (t === 'lasso' && lassoPath.current.length > 1) {
       ctx.strokeStyle = '#2563eb';
       ctx.lineWidth = 1.5 / zoomRef.current;
@@ -326,7 +340,6 @@ export default function HandwrittenNotes() {
       lassoPath.current.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
       ctx.closePath();
       ctx.fill(); ctx.stroke();
-
     } else if ((t === 'line' || t === 'rect' || t === 'circle') && shapeStart.current && currentPoints.current.length > 0) {
       const s = shapeStart.current, e = currentPoints.current[0];
       ctx.strokeStyle = colorRef.current;
@@ -338,22 +351,41 @@ export default function HandwrittenNotes() {
       else if (t === 'rect') { ctx.rect(s.x, s.y, e.x - s.x, e.y - s.y); }
       else { ctx.ellipse((s.x + e.x) / 2, (s.y + e.y) / 2, Math.abs(e.x - s.x) / 2, Math.abs(e.y - s.y) / 2, 0, 0, Math.PI * 2); }
       ctx.stroke();
-
-    } else if (currentPoints.current.length > 0) {
-      paintStrokes(ctx, [{
-        type: t === 'highlighter' ? 'highlighter' : 'pen',
-        color: colorRef.current, width: lwRef.current,
-        points: currentPoints.current,
-      }]);
     }
+    ctx.restore();
+  };
 
+  // Append single segment to live canvas (zero-latency pen drawing)
+  const appendLiveSegment = (p1, p2) => {
+    const canvas = liveCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.save();
+    ctx.translate(offsetXRef.current, offsetYRef.current);
+    ctx.scale(zoomRef.current, zoomRef.current);
+
+    if (toolRef.current === 'highlighter') {
+      ctx.globalAlpha = 0.38;
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.strokeStyle = colorRef.current;
+      ctx.lineWidth = lwRef.current * 2.5;
+    } else {
+      const pressure = ((p1.p ?? 0.5) + (p2.p ?? 0.5)) / 2;
+      ctx.strokeStyle = colorRef.current;
+      ctx.lineWidth = Math.max(0.5, lwRef.current * (0.4 + pressure * 1.2));
+    }
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
     ctx.restore();
   };
 
   const drawBackground = (ctx, W, H) => {
     const bg = bgRef.current;
-    if (bg === 'blank') return;
-
+    if (bg === 'blank' || bg === 'aged_plain') {
+      if (bg === 'aged_plain') drawAgedVignette(ctx, W, H);
+      return;
+    }
     const spacing = 24 * zoomRef.current;
     const sx = (offsetXRef.current % spacing) - spacing;
     const sy = (offsetYRef.current % spacing) - spacing;
@@ -366,7 +398,6 @@ export default function HandwrittenNotes() {
         for (let y = sy; y < H + spacing; y += spacing) {
           ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
         }
-
     } else if (bg === 'lines') {
       ctx.strokeStyle = 'rgba(0,0,0,0.09)';
       ctx.lineWidth = 0.8;
@@ -374,60 +405,47 @@ export default function HandwrittenNotes() {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
       }
       const mx = 48 * zoomRef.current + offsetXRef.current;
-      ctx.strokeStyle = 'rgba(220,80,80,0.22)';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(220,80,80,0.22)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(mx, 0); ctx.lineTo(mx, H); ctx.stroke();
-
     } else if (bg === 'grid') {
-      ctx.strokeStyle = 'rgba(0,0,0,0.08)';
-      ctx.lineWidth = 0.8;
+      ctx.strokeStyle = 'rgba(0,0,0,0.08)'; ctx.lineWidth = 0.8;
       for (let x = sx; x < W + spacing; x += spacing) {
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
       }
       for (let y = sy; y < H + spacing; y += spacing) {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
       }
-
-    } else if (bg === 'aged_plain' || bg === 'aged' || bg === 'aged_grid') {
-      // Shared aged vignette
-      const grad = ctx.createRadialGradient(W / 2, H / 2, H * 0.25, W / 2, H / 2, H * 0.9);
-      grad.addColorStop(0, 'rgba(160,110,50,0)');
-      grad.addColorStop(1, 'rgba(120,75,20,0.1)');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, W, H);
-
+    } else if (bg === 'aged' || bg === 'aged_grid') {
+      const ls = 22 * zoomRef.current;
+      const lx = (offsetXRef.current % ls) - ls;
+      const ly = (offsetYRef.current % ls) - ls;
+      ctx.strokeStyle = 'rgba(140,100,50,0.13)'; ctx.lineWidth = 0.7;
       if (bg === 'aged') {
-        // Kẻ dòng + lề đỏ
-        const lineSpacing = 22 * zoomRef.current;
-        const ly = (offsetYRef.current % lineSpacing) - lineSpacing;
-        ctx.strokeStyle = 'rgba(140,100,50,0.13)';
-        ctx.lineWidth = 0.7;
-        for (let y = ly; y < H + lineSpacing; y += lineSpacing) {
+        for (let y = ly; y < H + ls; y += ls) {
           ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
         }
         const mx = 48 * zoomRef.current + offsetXRef.current;
-        ctx.strokeStyle = 'rgba(180,70,40,0.22)';
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(180,70,40,0.22)'; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(mx, 0); ctx.lineTo(mx, H); ctx.stroke();
-
-      } else if (bg === 'aged_grid') {
-        // Lưới ô sepia
-        const gs = 22 * zoomRef.current;
-        const gx = (offsetXRef.current % gs) - gs;
-        const gy = (offsetYRef.current % gs) - gs;
-        ctx.strokeStyle = 'rgba(140,100,50,0.11)';
-        ctx.lineWidth = 0.7;
-        for (let x = gx; x < W + gs; x += gs) {
+      } else {
+        for (let x = lx; x < W + ls; x += ls) {
           ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
         }
-        for (let y = gy; y < H + gs; y += gs) {
+        for (let y = ly; y < H + ls; y += ls) {
           ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
         }
       }
-      // aged_plain: chỉ vignette, không có đường kẻ
+      drawAgedVignette(ctx, W, H);
     }
-
     ctx.restore();
+  };
+
+  const drawAgedVignette = (ctx, W, H) => {
+    const grad = ctx.createRadialGradient(W / 2, H / 2, H * 0.25, W / 2, H / 2, H * 0.9);
+    grad.addColorStop(0, 'rgba(160,110,50,0)');
+    grad.addColorStop(1, 'rgba(120,75,20,0.1)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
   };
 
   const paintStrokes = (ctx, list) => {
@@ -470,39 +488,43 @@ export default function HandwrittenNotes() {
     });
   };
 
-  const renderRef = useRef(renderCanvas);
-  renderRef.current = renderCanvas;
+  const renderCommittedRef = useRef(renderCommitted);
+  renderCommittedRef.current = renderCommitted;
 
-  // Resize canvas when container changes
+  // Resize both canvases
   useEffect(() => {
     const resize = () => {
-      const canvas = canvasRef.current, cont = containerRef.current;
-      if (!canvas || !cont) return;
+      const cont = containerRef.current;
+      if (!cont) return;
       const dpr = window.devicePixelRatio || 1;
-      canvas.width  = cont.clientWidth  * dpr;
-      canvas.height = cont.clientHeight * dpr;
-      canvas.style.width  = `${cont.clientWidth}px`;
-      canvas.style.height = `${cont.clientHeight}px`;
-      canvas.getContext('2d').scale(dpr, dpr);
-      renderRef.current();
+      const W = cont.clientWidth, H = cont.clientHeight;
+      [committedCanvasRef, liveCanvasRef].forEach(ref => {
+        const c = ref.current;
+        if (!c) return;
+        c.width  = W * dpr;  c.height = H * dpr;
+        c.style.width  = `${W}px`;  c.style.height = `${H}px`;
+        c.getContext('2d').scale(dpr, dpr);
+      });
+      renderCommittedRef.current();
     };
     resize();
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
   }, []);
 
-  // Full re-render when committed state changes
-  useEffect(() => { renderRef.current(); snapshotRef.current = null; },
-    [strokes, offsetX, offsetY, zoomScale, background, selectedIds]);
-
-  // Mouse-wheel zoom
+  // Re-render committed on state change, clear live
   useEffect(() => {
-    const canvas = canvasRef.current;
+    renderCommittedRef.current();
+    clearLive();
+  }, [strokes, offsetX, offsetY, zoomScale, background, selectedIds]);
+
+  // Mouse-wheel zoom (on live canvas which is on top)
+  useEffect(() => {
+    const canvas = liveCanvasRef.current;
     if (!canvas) return;
     const onWheel = (e) => {
       e.preventDefault();
-      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-      setZoomScale(prev => Math.max(0.15, Math.min(6, prev * factor)));
+      setZoomScale(prev => Math.max(0.15, Math.min(6, prev * (e.deltaY < 0 ? 1.1 : 1 / 1.1))));
     };
     canvas.addEventListener('wheel', onWheel, { passive: false });
     return () => canvas.removeEventListener('wheel', onWheel);
@@ -510,11 +532,11 @@ export default function HandwrittenNotes() {
 
   // Close popups on outside click
   useEffect(() => {
-    if (!showColorPicker && !showBgPicker) return;
-    const close = () => { setShowColorPicker(false); setShowBgPicker(false); };
+    if (!showColorPicker && !showBgPicker && !showShapePicker) return;
+    const close = () => { setShowColorPicker(false); setShowBgPicker(false); setShowShapePicker(false); };
     const t = setTimeout(() => document.addEventListener('pointerdown', close), 10);
     return () => { clearTimeout(t); document.removeEventListener('pointerdown', close); };
-  }, [showColorPicker, showBgPicker]);
+  }, [showColorPicker, showBgPicker, showShapePicker]);
 
   // ── Eraser ───────────────────────────────────────────────────────────
   const erase = (wx, wy) => {
@@ -546,7 +568,7 @@ export default function HandwrittenNotes() {
 
   const deleteSelected = () => {
     const remaining = strokesRef.current.filter(s => !selRef.current.has(s.id));
-    setStrokes(remaining); pushHistory(remaining); setSelectedIds(new Set());
+    setStrokes(remaining);  pushHistory(remaining);  setSelectedIds(new Set());
   };
 
   // ── Shape → points ───────────────────────────────────────────────────
@@ -557,21 +579,18 @@ export default function HandwrittenNotes() {
       { x: e.x, y: e.y, p: 0.5 }, { x: s.x, y: e.y, p: 0.5 },
       { x: s.x, y: s.y, p: 0.5 },
     ];
-    if (t === 'circle') {
-      const rx = Math.abs(e.x - s.x) / 2, ry = Math.abs(e.y - s.y) / 2;
-      const cx = (s.x + e.x) / 2, cy = (s.y + e.y) / 2;
-      return Array.from({ length: 65 }, (_, i) => {
-        const a = (i / 64) * Math.PI * 2;
-        return { x: cx + rx * Math.cos(a), y: cy + ry * Math.sin(a), p: 0.5 };
-      });
-    }
-    return [];
+    const rx = Math.abs(e.x - s.x) / 2, ry = Math.abs(e.y - s.y) / 2;
+    const cx = (s.x + e.x) / 2, cy = (s.y + e.y) / 2;
+    return Array.from({ length: 65 }, (_, i) => {
+      const a = (i / 64) * Math.PI * 2;
+      return { x: cx + rx * Math.cos(a), y: cy + ry * Math.sin(a), p: 0.5 };
+    });
   };
 
-  // ── Pointer events ───────────────────────────────────────────────────
+  // ── Pointer events (on liveCanvas, which is on top) ──────────────────
   const onPointerDown = (e) => {
     e.preventDefault();
-    const canvas = canvasRef.current;
+    const canvas = liveCanvasRef.current;
     if (!canvas) return;
     canvas.setPointerCapture(e.pointerId);
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -580,7 +599,7 @@ export default function HandwrittenNotes() {
     const { worldX, worldY } = toWorld(e.clientX, e.clientY);
 
     if (activePointers.current.size >= 2) {
-      isDrawing.current = false; currentPoints.current = [];
+      isDrawing.current = false;  currentPoints.current = [];
       const [id1, id2] = Array.from(activePointers.current.keys());
       const p1 = activePointers.current.get(id1), p2 = activePointers.current.get(id2);
       initialPinchDist.current = Math.hypot(p1.x - p2.x, p1.y - p2.y);
@@ -592,16 +611,10 @@ export default function HandwrittenNotes() {
     if (toolRef.current === 'hand' || e.buttons === 4) { isDrawing.current = false; return; }
 
     const t = toolRef.current;
-
-    // Clear selection immediately in ref so snapshot doesn't include highlight
     if (t !== 'lasso') { selRef.current = new Set(); setSelectedIds(new Set()); }
 
     isDrawing.current = true;
     hasErased.current = false;
-
-    // Full render + snapshot so live drawing is cheap
-    renderRef.current();
-    takeSnapshot();
 
     if (t === 'lasso') {
       lassoPath.current = [{ x: worldX, y: worldY }];
@@ -611,9 +624,9 @@ export default function HandwrittenNotes() {
     } else if (t === 'eraser') {
       erase(worldX, worldY);
     } else {
+      // pen / highlighter: start live drawing on liveCanvas
       const pressure = e.pressure > 0 ? e.pressure : 0.5;
       currentPoints.current = [{ x: worldX, y: worldY, p: pressure }];
-      drawLive();
     }
   };
 
@@ -627,12 +640,9 @@ export default function HandwrittenNotes() {
       const [id1, id2] = Array.from(activePointers.current.keys());
       const p1 = activePointers.current.get(id1), p2 = activePointers.current.get(id2);
       const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
-      if (initialPinchDist.current > 0) {
-        const nz = Math.max(0.15, Math.min(6, initialPinchZoom.current * (dist / initialPinchDist.current)));
-        setZoomScale(nz);
-      }
-      const dx = e.clientX - lastPointerPos.current.x;
-      const dy = e.clientY - lastPointerPos.current.y;
+      if (initialPinchDist.current > 0)
+        setZoomScale(Math.max(0.15, Math.min(6, initialPinchZoom.current * (dist / initialPinchDist.current))));
+      const dx = e.clientX - lastPointerPos.current.x, dy = e.clientY - lastPointerPos.current.y;
       setOffsetX(p => p + dx / 2);  setOffsetY(p => p + dy / 2);
       lastPointerPos.current = { x: e.clientX, y: e.clientY };
       return;
@@ -640,8 +650,7 @@ export default function HandwrittenNotes() {
 
     // Finger pan
     if (e.pointerType === 'touch') {
-      const dx = e.clientX - lastPointerPos.current.x;
-      const dy = e.clientY - lastPointerPos.current.y;
+      const dx = e.clientX - lastPointerPos.current.x, dy = e.clientY - lastPointerPos.current.y;
       setOffsetX(p => p + dx);  setOffsetY(p => p + dy);
       lastPointerPos.current = { x: e.clientX, y: e.clientY };
       return;
@@ -649,8 +658,7 @@ export default function HandwrittenNotes() {
 
     // Hand tool / middle mouse pan
     if (toolRef.current === 'hand' || e.buttons === 4) {
-      const dx = e.clientX - lastPointerPos.current.x;
-      const dy = e.clientY - lastPointerPos.current.y;
+      const dx = e.clientX - lastPointerPos.current.x, dy = e.clientY - lastPointerPos.current.y;
       setOffsetX(p => p + dx);  setOffsetY(p => p + dy);
       lastPointerPos.current = { x: e.clientX, y: e.clientY };
       return;
@@ -661,32 +669,32 @@ export default function HandwrittenNotes() {
 
     if (t === 'lasso') {
       lassoPath.current.push({ x: worldX, y: worldY });
-      drawLive();
+      drawLivePreview();
     } else if (t === 'line' || t === 'rect' || t === 'circle') {
       currentPoints.current = [{ x: worldX, y: worldY }];
-      drawLive();
+      drawLivePreview();
     } else if (t === 'eraser') {
       erase(worldX, worldY);
     } else {
+      // Pen / highlighter: append segment directly to live canvas (zero-clear, zero-copy)
       const pressure = e.pressure > 0 ? e.pressure : 0.5;
       const pts = currentPoints.current;
       if (pts.length > 0) {
         const last = pts[pts.length - 1];
-        if (Math.hypot(worldX - last.x, worldY - last.y) < 0.5) return; // lower threshold for smoother lines
+        if (Math.hypot(worldX - last.x, worldY - last.y) < 0.5) return;
+        appendLiveSegment(last, { x: worldX, y: worldY, p: pressure });
       }
       currentPoints.current.push({ x: worldX, y: worldY, p: pressure });
-      drawLive(); // fast: restore snapshot + draw current stroke only
     }
   };
 
   const onPointerUp = (e) => {
-    canvasRef.current?.releasePointerCapture(e.pointerId);
+    liveCanvasRef.current?.releasePointerCapture(e.pointerId);
     activePointers.current.delete(e.pointerId);
     if (activePointers.current.size < 2) initialPinchDist.current = 0;
 
     if (!isDrawing.current) return;
     isDrawing.current = false;
-    snapshotRef.current = null;
     const t = toolRef.current;
 
     if (t === 'lasso') {
@@ -700,10 +708,10 @@ export default function HandwrittenNotes() {
         if (pts.length > 0) {
           const ns = { id: Math.random().toString(36).slice(2), type: 'pen', color: colorRef.current, width: lwRef.current, points: pts };
           const next = [...strokesRef.current, ns];
-          setStrokes(next); pushHistory(next);
+          setStrokes(next);  pushHistory(next);
         }
       }
-      shapeStart.current = null; currentPoints.current = [];
+      shapeStart.current = null;  currentPoints.current = [];
     } else if (currentPoints.current.length > 0) {
       const ns = {
         id: Math.random().toString(36).slice(2),
@@ -712,16 +720,17 @@ export default function HandwrittenNotes() {
         points: [...currentPoints.current],
       };
       const next = [...strokesRef.current, ns];
-      setStrokes(next); pushHistory(next);
+      setStrokes(next);  pushHistory(next);
       currentPoints.current = [];
     }
+    // State update → useEffect → renderCommitted + clearLive
   };
 
   const onPointerCancel = (e) => {
     activePointers.current.delete(e.pointerId);
     isDrawing.current = false;
-    currentPoints.current = []; lassoPath.current = []; shapeStart.current = null;
-    snapshotRef.current = null;
+    currentPoints.current = [];  lassoPath.current = [];  shapeStart.current = null;
+    clearLive();
   };
 
   // ── Misc ─────────────────────────────────────────────────────────────
@@ -733,40 +742,35 @@ export default function HandwrittenNotes() {
     setLineWidth(Math.round(p.width));
   };
 
-  const zoom = (dir) => setZoomScale(prev => Math.max(0.15, Math.min(6, dir === 'in' ? prev * 1.25 : prev / 1.25)));
+  const zoom = (dir) => setZoomScale(p => Math.max(0.15, Math.min(6, dir === 'in' ? p * 1.25 : p / 1.25)));
   const resetView = () => { setOffsetX(0); setOffsetY(0); setZoomScale(1); };
 
   const exportPng = () => {
-    const url = canvasRef.current?.toDataURL('image/png');
-    if (!url) return;
+    // Merge committed + live onto a temp canvas to export
+    const committed = committedCanvasRef.current;
+    if (!committed) return;
+    const url = committed.toDataURL('image/png');
     const a = document.createElement('a');
-    a.href = url; a.download = `${noteTitle || 'ghi-chu'}.png`; a.click();
+    a.href = url;  a.download = `${noteTitle || 'ghi-chu'}.png`;  a.click();
   };
 
-  const openColorPicker = (e) => {
+  const openPopup = (btnRef, setPos, approxHeight, setShow, ...closers) => (e) => {
     e.stopPropagation();
-    const rect = colorBtnRef.current?.getBoundingClientRect();
-    if (rect) setColorPickerPos({ top: rect.bottom + 6, left: rect.left });
-    setShowColorPicker(v => !v);
-    setShowBgPicker(false);
-  };
-
-  const openBgPicker = (e) => {
-    e.stopPropagation();
-    const rect = bgBtnRef.current?.getBoundingClientRect();
-    if (rect) setBgPickerPos({ top: rect.bottom + 6, left: rect.left });
-    setShowBgPicker(v => !v);
-    setShowColorPicker(false);
+    setPos(calcPopupPos(btnRef, approxHeight));
+    setShow(v => !v);
+    closers.forEach(fn => fn(false));
   };
 
   const isPenActive = tool === 'pen' || tool === 'highlighter';
+  const isShapeActive = tool === 'line' || tool === 'rect' || tool === 'circle';
+  const currentShapeOpt = SHAPE_OPTIONS.find(s => s.id === tool);
   const getCursor = () => tool === 'hand' ? 'grab' : tool === 'eraser' ? 'cell' : 'crosshair';
 
   // ── JSX ──────────────────────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', height: '100%', width: '100%', overflow: 'hidden', fontFamily: 'system-ui,-apple-system,sans-serif' }}>
 
-      {/* ── SIDEBAR ── */}
+      {/* SIDEBAR */}
       <div style={{ width: isSidebarOpen ? '240px' : '0px', transition: 'width 0.22s ease', overflow: 'hidden', flexShrink: 0, background: '#fff', borderRight: '1px solid #e8e8e8', display: 'flex', flexDirection: 'column' }}>
         <div style={{ width: '240px', height: '100%', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '12px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -801,47 +805,46 @@ export default function HandwrittenNotes() {
         </div>
       </div>
 
-      {/* ── MAIN ── */}
+      {/* MAIN */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
 
         {/* Title bar */}
-        <div style={{ background: '#fff', borderBottom: '1px solid #e8e8e8', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+        <div style={{ background: '#fff', borderBottom: '1px solid #e8e8e8', padding: '5px 10px', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
           <button onClick={() => setIsSidebarOpen(v => !v)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#666', padding: '5px', borderRadius: '5px' }}>
             <Menu size={17} />
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>
             {isEditingTitle
               ? <input value={titleInput} onChange={e => setTitleInput(e.target.value)} onBlur={renameNote} onKeyDown={e => e.key === 'Enter' && renameNote()} autoFocus
-                  style={{ border: '1px solid #5c33c1', borderRadius: '4px', padding: '3px 8px', fontSize: '0.88rem', fontWeight: 600, outline: 'none', maxWidth: '280px', width: '100%' }} />
-              : <span onClick={() => setIsEditingTitle(true)} style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1a1a1a', cursor: 'text', padding: '3px 4px', borderRadius: '4px' }}>
+                  style={{ border: '1px solid #5c33c1', borderRadius: '4px', padding: '2px 7px', fontSize: '0.86rem', fontWeight: 600, outline: 'none', maxWidth: '260px', width: '100%' }} />
+              : <span onClick={() => setIsEditingTitle(true)} title="Nhấn để đổi tên" style={{ fontSize: '0.86rem', fontWeight: 600, color: '#1a1a1a', cursor: 'text', padding: '2px 4px', borderRadius: '4px' }}>
                   {noteTitle || 'Ghi chú mới'}
                 </span>
             }
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-            <button onClick={undo} disabled={historyIndex <= 0} title="Undo" style={{ border: 'none', background: 'none', padding: '5px', borderRadius: '5px', cursor: historyIndex > 0 ? 'pointer' : 'default', color: historyIndex > 0 ? '#555' : '#d1d5db' }}>
-              <Undo2 size={16} />
-            </button>
-            <button onClick={redo} disabled={historyIndex >= history.length - 1} title="Redo" style={{ border: 'none', background: 'none', padding: '5px', borderRadius: '5px', cursor: historyIndex < history.length - 1 ? 'pointer' : 'default', color: historyIndex < history.length - 1 ? '#555' : '#d1d5db' }}>
-              <Redo2 size={16} />
-            </button>
-            <div style={{ width: '1px', height: '18px', background: '#e8e8e8', margin: '0 4px' }} />
-            <button onClick={exportPng} title="Tải về PNG" style={{ border: 'none', background: 'none', padding: '5px', borderRadius: '5px', cursor: 'pointer', color: '#555' }}>
-              <Download size={16} />
-            </button>
-            <button onClick={() => save()} style={{ border: 'none', background: '#5c33c1', color: '#fff', padding: '5px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.76rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              {saveStatus === 'saving'
-                ? <span style={{ width: 12, height: 12, border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'hn-spin 0.6s linear infinite' }} />
-                : saveStatus === 'saved' ? <Check size={13} /> : <Save size={13} />}
-              <span>{saveStatus === 'saved' ? 'Đã lưu' : 'Lưu'}</span>
-            </button>
-          </div>
+          <button onClick={undo} disabled={historyIndex <= 0} title="Undo" style={{ border: 'none', background: 'none', padding: '5px', borderRadius: '5px', cursor: historyIndex > 0 ? 'pointer' : 'default', color: historyIndex > 0 ? '#555' : '#ccc' }}>
+            <Undo2 size={15} />
+          </button>
+          <button onClick={redo} disabled={historyIndex >= history.length - 1} title="Redo" style={{ border: 'none', background: 'none', padding: '5px', borderRadius: '5px', cursor: historyIndex < history.length - 1 ? 'pointer' : 'default', color: historyIndex < history.length - 1 ? '#555' : '#ccc' }}>
+            <Redo2 size={15} />
+          </button>
+          <button onClick={exportPng} title="Tải về PNG" style={{ border: 'none', background: 'none', padding: '5px', borderRadius: '5px', cursor: 'pointer', color: '#666' }}>
+            <Download size={15} />
+          </button>
+          <button onClick={() => save()} style={{ border: 'none', background: '#5c33c1', color: '#fff', padding: '4px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0 }}>
+            {saveStatus === 'saving'
+              ? <span style={{ width: 11, height: 11, border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'hn-spin 0.6s linear infinite' }} />
+              : saveStatus === 'saved' ? <Check size={12} /> : <Save size={12} />}
+            <span>{saveStatus === 'saved' ? 'Đã lưu' : 'Lưu'}</span>
+          </button>
         </div>
 
-        {/* Tool ribbon — overflowX:auto; popups rendered via portal (position:fixed) */}
-        <div style={{ background: '#fff', borderBottom: '1px solid #e8e8e8', padding: '5px 10px', display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0, overflowX: 'auto' }}>
-          <ToolBtn active={tool === 'lasso'} onClick={() => setTool('lasso')} title="Lasso chọn vùng"><MousePointer2 size={15} /></ToolBtn>
-          <ToolBtn active={tool === 'hand'}  onClick={() => setTool('hand')}  title="Di chuyển"><span style={{ fontSize: '13px' }}>✋</span></ToolBtn>
+        {/* Tool ribbon — compact */}
+        <div style={{ background: '#fff', borderBottom: '1px solid #e8e8e8', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0, overflowX: 'auto' }}>
+
+          {/* Select + Hand */}
+          <ToolBtn active={tool === 'lasso'} onClick={() => setTool('lasso')} title="Lasso chọn vùng"><MousePointer2 size={14} /></ToolBtn>
+          <ToolBtn active={tool === 'hand'}  onClick={() => setTool('hand')}  title="Di chuyển"><span style={{ fontSize: '12px' }}>✋</span></ToolBtn>
           <Sep />
 
           {/* Pen presets */}
@@ -851,92 +854,116 @@ export default function HandwrittenNotes() {
               <button key={idx} onClick={() => selectPreset(idx)} title={preset.label} style={{
                 border: `2px solid ${isActive ? '#5c33c1' : 'transparent'}`,
                 background: isActive ? '#ede9fb' : 'transparent',
-                borderRadius: '8px', padding: '3px 5px', cursor: 'pointer',
+                borderRadius: '7px', padding: '2px 4px', cursor: 'pointer',
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px', flexShrink: 0,
               }}>
-                <svg width="32" height="18" viewBox="0 0 32 18" style={{ display: 'block' }}>
+                <svg width="28" height="16" viewBox="0 0 28 16">
                   {preset.type === 'highlighter'
-                    ? <path d="M2 13 Q16 9 30 13" stroke={preset.color} strokeWidth="8" strokeLinecap="round" fill="none" opacity="0.5" />
-                    : <path d="M2 15 Q12 3 30 7"  stroke={preset.color} strokeWidth={Math.min(preset.width * 1.4, 5)} strokeLinecap="round" fill="none" />}
+                    ? <path d="M2 11 Q14 7 26 11" stroke={preset.color} strokeWidth="7" strokeLinecap="round" fill="none" opacity="0.5" />
+                    : <path d="M2 13 Q10 3 26 6" stroke={preset.color} strokeWidth={Math.min(preset.width * 1.3, 4.5)} strokeLinecap="round" fill="none" />}
                 </svg>
-                <span style={{ fontSize: '0.55rem', color: '#999', lineHeight: 1 }}>{preset.label}</span>
+                <span style={{ fontSize: '0.52rem', color: '#999', lineHeight: 1 }}>{preset.label}</span>
               </button>
             );
           })}
           <Sep />
 
-          <ToolBtn active={tool === 'eraser'} onClick={() => setTool('eraser')} title="Tẩy"><Eraser size={15} /></ToolBtn>
-          <Sep />
-          <ToolBtn active={tool === 'line'}   onClick={() => setTool('line')}   title="Đường thẳng"><Minus size={15} /></ToolBtn>
-          <ToolBtn active={tool === 'rect'}   onClick={() => setTool('rect')}   title="Hình chữ nhật"><Square size={15} /></ToolBtn>
-          <ToolBtn active={tool === 'circle'} onClick={() => setTool('circle')} title="Hình tròn/Oval"><CircleIcon size={15} /></ToolBtn>
+          {/* Eraser */}
+          <ToolBtn active={tool === 'eraser'} onClick={() => setTool('eraser')} title="Tẩy"><Eraser size={14} /></ToolBtn>
+
+          {/* Shapes dropdown */}
+          <button ref={shapeBtnRef}
+            onClick={openPopup(shapeBtnRef, setShapePickerPos, 140, setShowShapePicker, setShowColorPicker, setShowBgPicker)}
+            title="Vẽ hình"
+            style={{
+              border: `2px solid ${isShapeActive ? '#5c33c1' : 'transparent'}`,
+              background: isShapeActive ? '#ede9fb' : 'transparent',
+              color: isShapeActive ? '#5c33c1' : '#555',
+              borderRadius: '7px', padding: '5px 6px', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0,
+            }}>
+            {currentShapeOpt ? <currentShapeOpt.Icon size={14} /> : <Square size={14} />}
+            <ChevronDown size={10} />
+          </button>
           <Sep />
 
-          {/* Color button — opens fixed-position popup */}
-          <button ref={colorBtnRef} onClick={openColorPicker} style={{ border: '1px solid #e8e8e8', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', background: '#fff', display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
-            <div style={{ width: '16px', height: '16px', borderRadius: '50%', background: color, border: '1px solid #ddd', flexShrink: 0 }} />
-            <span style={{ fontSize: '0.72rem', color: '#555', whiteSpace: 'nowrap' }}>Màu</span>
+          {/* Color circle button */}
+          <button ref={colorBtnRef}
+            onClick={openPopup(colorBtnRef, setColorPickerPos, 280, setShowColorPicker, setShowBgPicker, setShowShapePicker)}
+            title="Chọn màu"
+            style={{ border: '1px solid #e8e8e8', borderRadius: '6px', padding: '4px 7px', cursor: 'pointer', background: '#fff', display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
+            <div style={{ width: '15px', height: '15px', borderRadius: '50%', background: color, border: '1px solid #ddd', flexShrink: 0 }} />
+            <ChevronDown size={10} style={{ color: '#999' }} />
           </button>
 
-          {/* Size stepper: − number + */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
-            <button
-              onClick={() => setLineWidth(w => Math.max(1, Math.round(w) - 1))}
-              style={{ width: '26px', height: '26px', border: '1px solid #e0e0e0', borderRadius: '6px', background: '#fafafa', cursor: 'pointer', fontSize: '14px', color: '#555', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
+          {/* Size stepper */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1px', flexShrink: 0, marginLeft: '2px' }}>
+            <button onClick={() => setLineWidth(w => Math.max(1, Math.round(w) - 1))}
+              style={{ width: '24px', height: '24px', border: '1px solid #e0e0e0', borderRadius: '5px 0 0 5px', background: '#fafafa', cursor: 'pointer', fontSize: '14px', color: '#555', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, lineHeight: 1 }}>
               −
             </button>
-            <div style={{ minWidth: '34px', textAlign: 'center', fontSize: '0.8rem', fontWeight: 700, color: '#333', fontVariantNumeric: 'tabular-nums', userSelect: 'none' }}>
+            <div style={{ minWidth: '28px', textAlign: 'center', fontSize: '0.78rem', fontWeight: 700, color: '#333', fontVariantNumeric: 'tabular-nums', border: '1px solid #e0e0e0', borderLeft: 'none', borderRight: 'none', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', userSelect: 'none' }}>
               {Math.round(lineWidth)}
             </div>
-            <button
-              onClick={() => setLineWidth(w => Math.min(20, Math.round(w) + 1))}
-              style={{ width: '26px', height: '26px', border: '1px solid #e0e0e0', borderRadius: '6px', background: '#fafafa', cursor: 'pointer', fontSize: '14px', color: '#555', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
+            <button onClick={() => setLineWidth(w => Math.min(20, Math.round(w) + 1))}
+              style={{ width: '24px', height: '24px', border: '1px solid #e0e0e0', borderRadius: '0 5px 5px 0', background: '#fafafa', cursor: 'pointer', fontSize: '14px', color: '#555', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, lineHeight: 1 }}>
               +
             </button>
-            <div style={{ width: `${Math.min(Math.max(4, Math.round(lineWidth) * 1.6), 20)}px`, height: `${Math.min(Math.max(4, Math.round(lineWidth) * 1.6), 20)}px`, borderRadius: '50%', background: color, border: '1px solid #ddd', flexShrink: 0, marginLeft: '4px' }} />
+            <div style={{ width: `${Math.min(Math.max(4, Math.round(lineWidth) * 1.5), 18)}px`, height: `${Math.min(Math.max(4, Math.round(lineWidth) * 1.5), 18)}px`, borderRadius: '50%', background: color, border: '1px solid #ddd', flexShrink: 0, marginLeft: '5px' }} />
           </div>
           <Sep />
 
-          {/* Background button */}
-          <button ref={bgBtnRef} onClick={openBgPicker} style={{ border: '1px solid #e8e8e8', borderRadius: '6px', padding: '5px 9px', cursor: 'pointer', background: '#fff', fontSize: '0.72rem', color: '#555', whiteSpace: 'nowrap', flexShrink: 0 }}>
-            Nền ▾
+          {/* Background picker */}
+          <button ref={bgBtnRef}
+            onClick={openPopup(bgBtnRef, setBgPickerPos, 290, setShowBgPicker, setShowColorPicker, setShowShapePicker)}
+            style={{ border: '1px solid #e8e8e8', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', background: '#fff', fontSize: '0.71rem', color: '#555', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+            <div style={{ width: '13px', height: '10px', borderRadius: '2px', background: BG_OPTIONS.find(b => b.id === background)?.base ?? '#fff', border: '1px solid #ddd' }} />
+            Nền
+            <ChevronDown size={10} style={{ color: '#999' }} />
           </button>
 
-          {/* Delete selected */}
+          {/* Delete lasso selection */}
           {selectedIds.size > 0 && (
             <>
               <Sep />
-              <button onClick={deleteSelected} style={{ border: 'none', background: '#fef2f2', color: '#dc2626', padding: '5px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                <Trash2 size={13} /> Xóa {selectedIds.size} nét
+              <button onClick={deleteSelected} style={{ border: 'none', background: '#fef2f2', color: '#dc2626', padding: '4px 9px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                <Trash2 size={12} /> Xóa {selectedIds.size} nét
               </button>
             </>
           )}
         </div>
 
-        {/* Canvas */}
-        <div ref={containerRef} style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-          <canvas ref={canvasRef} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}
-            style={{ display: 'block', touchAction: 'none', cursor: getCursor() }} />
+        {/* Canvas area — two layers stacked */}
+        <div ref={containerRef} style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#FEFDF8' }}>
+          {/* Bottom: committed strokes */}
+          <canvas ref={committedCanvasRef} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', display: 'block' }} />
+          {/* Top: live drawing + pointer events */}
+          <canvas ref={liveCanvasRef}
+            onPointerDown={onPointerDown} onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}
+            style={{ position: 'absolute', top: 0, left: 0, display: 'block', touchAction: 'none', cursor: getCursor() }} />
 
           {/* Zoom widget */}
-          <div style={{ position: 'absolute', bottom: '16px', right: '16px', zIndex: 10, display: 'flex', alignItems: 'center', background: '#fff', border: '1px solid #e8e8e8', borderRadius: '8px', padding: '3px', boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}>
-            <button onClick={() => zoom('out')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#666', padding: '4px 5px', borderRadius: '5px' }}><ZoomOut size={14} /></button>
-            <span onClick={resetView} style={{ fontSize: '0.72rem', color: '#555', fontWeight: 600, padding: '0 6px', cursor: 'pointer', fontVariantNumeric: 'tabular-nums', minWidth: '42px', textAlign: 'center' }}>
+          <div style={{ position: 'absolute', bottom: '14px', right: '14px', zIndex: 10, display: 'flex', alignItems: 'center', background: '#fff', border: '1px solid #e8e8e8', borderRadius: '8px', padding: '3px', boxShadow: '0 2px 10px rgba(0,0,0,0.07)' }}>
+            <button onClick={() => zoom('out')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#666', padding: '3px 5px', borderRadius: '4px' }}><ZoomOut size={13} /></button>
+            <span onClick={resetView} style={{ fontSize: '0.7rem', color: '#555', fontWeight: 600, padding: '0 5px', cursor: 'pointer', fontVariantNumeric: 'tabular-nums', minWidth: '38px', textAlign: 'center' }}>
               {Math.round(zoomScale * 100)}%
             </span>
-            <button onClick={() => zoom('in')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#666', padding: '4px 5px', borderRadius: '5px' }}><ZoomIn size={14} /></button>
-            <div style={{ width: '1px', height: '14px', background: '#e8e8e8', margin: '0 2px' }} />
-            <button onClick={resetView} title="Reset view" style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#666', padding: '4px 5px', borderRadius: '5px' }}><Maximize2 size={12} /></button>
+            <button onClick={() => zoom('in')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#666', padding: '3px 5px', borderRadius: '4px' }}><ZoomIn size={13} /></button>
+            <div style={{ width: '1px', height: '12px', background: '#e8e8e8', margin: '0 1px' }} />
+            <button onClick={resetView} title="Reset" style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#666', padding: '3px 4px', borderRadius: '4px' }}><Maximize2 size={11} /></button>
           </div>
         </div>
       </div>
 
-      {/* ── COLOR PICKER (position:fixed — escapes toolbar overflow clipping) ── */}
+      {/* ── FIXED-POSITION POPUPS ── */}
+
+      {/* Color picker */}
       {showColorPicker && (
         <div onPointerDown={e => e.stopPropagation()} style={{
           position: 'fixed', top: colorPickerPos.top, left: colorPickerPos.left, zIndex: 9999,
           background: '#fff', border: '1px solid #e8e8e8', borderRadius: '12px',
-          padding: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.14)',
+          padding: '10px', boxShadow: '0 8px 32px rgba(0,0,0,0.14)',
           display: 'grid', gridTemplateColumns: 'repeat(7, 26px)', gap: '5px',
         }}>
           {COLORS.map(c => (
@@ -946,31 +973,51 @@ export default function HandwrittenNotes() {
               boxShadow: c === '#FFFFFF' ? 'inset 0 0 0 1px #ccc' : 'none',
             }} />
           ))}
-          <div style={{ gridColumn: '1/-1', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', borderTop: '1px solid #f0f0f0', paddingTop: '8px' }}>
-            <span style={{ fontSize: '0.7rem', color: '#999' }}>Tùy chọn</span>
+          <div style={{ gridColumn: '1/-1', marginTop: '7px', display: 'flex', alignItems: 'center', gap: '7px', borderTop: '1px solid #f0f0f0', paddingTop: '7px' }}>
+            <span style={{ fontSize: '0.68rem', color: '#aaa' }}>Tùy chọn</span>
             <input type="color" value={color} onChange={e => setColor(e.target.value)}
-              style={{ width: '30px', height: '24px', border: 'none', cursor: 'pointer', padding: 0, background: 'none' }} />
-            <span style={{ fontSize: '0.7rem', color: '#999', fontFamily: 'monospace' }}>{color}</span>
+              style={{ width: '28px', height: '22px', border: 'none', cursor: 'pointer', padding: 0, background: 'none' }} />
+            <span style={{ fontSize: '0.68rem', color: '#aaa', fontFamily: 'monospace' }}>{color}</span>
           </div>
         </div>
       )}
 
-      {/* ── BACKGROUND PICKER (position:fixed) ── */}
+      {/* Shape picker */}
+      {showShapePicker && (
+        <div onPointerDown={e => e.stopPropagation()} style={{
+          position: 'fixed', top: shapePickerPos.top, left: shapePickerPos.left, zIndex: 9999,
+          background: '#fff', border: '1px solid #e8e8e8', borderRadius: '9px',
+          padding: '5px', boxShadow: '0 6px 20px rgba(0,0,0,0.1)', minWidth: '140px',
+        }}>
+          {SHAPE_OPTIONS.map(({ id, label, Icon }) => (
+            <button key={id} onClick={() => { setTool(id); setShowShapePicker(false); }} style={{
+              width: '100%', padding: '7px 10px', border: 'none', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px',
+              background: tool === id ? '#ede9fb' : 'transparent',
+              color: tool === id ? '#5c33c1' : '#333',
+              borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: tool === id ? 600 : 400,
+            }}>
+              <Icon size={14} /> {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Background picker */}
       {showBgPicker && (
         <div onPointerDown={e => e.stopPropagation()} style={{
           position: 'fixed', top: bgPickerPos.top, left: bgPickerPos.left, zIndex: 9999,
           background: '#fff', border: '1px solid #e8e8e8', borderRadius: '10px',
-          padding: '6px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: '130px',
+          padding: '5px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: '180px',
         }}>
           {BG_OPTIONS.map(({ id, label, base }) => (
             <button key={id} onClick={() => { setBackground(id); setShowBgPicker(false); }} style={{
               width: '100%', padding: '7px 10px', border: 'none', textAlign: 'left',
               background: background === id ? '#ede9fb' : 'transparent',
               color: background === id ? '#5c33c1' : '#333',
-              borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem',
-              fontWeight: background === id ? 600 : 400, display: 'flex', alignItems: 'center', gap: '8px',
+              borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: background === id ? 600 : 400,
+              display: 'flex', alignItems: 'center', gap: '9px',
             }}>
-              <div style={{ width: '20px', height: '14px', borderRadius: '3px', background: base, border: '1px solid #ddd', flexShrink: 0 }} />
+              <div style={{ width: '22px', height: '14px', borderRadius: '3px', background: base, border: '1px solid #ddd', flexShrink: 0 }} />
               {label}
             </button>
           ))}
