@@ -47,46 +47,98 @@ const SHAPE_OPTIONS = [
 const SIZE_OPTIONS = [1, 2, 3, 5, 7, 10, 14, 20];
 
 // ── Smart shape recognition (pure functions, no React deps) ──────────────────
+
+// Downsample stroke to n evenly-spaced points
 function dsPoints(pts, n) {
   if (pts.length <= n) return pts;
   const step = (pts.length - 1) / (n - 1);
   return Array.from({ length: n }, (_, i) => pts[Math.round(i * step)]);
 }
+
+// Ramer-Douglas-Peucker line simplification
+function rdp(pts, eps) {
+  if (pts.length <= 2) return pts;
+  const s = pts[0], e = pts[pts.length - 1];
+  const len = Math.hypot(e.x - s.x, e.y - s.y);
+  let maxD = 0, maxI = 0;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const d = len < 1e-6
+      ? Math.hypot(pts[i].x - s.x, pts[i].y - s.y)
+      : Math.abs((e.y - s.y) * pts[i].x - (e.x - s.x) * pts[i].y + e.x * s.y - e.y * s.x) / len;
+    if (d > maxD) { maxD = d; maxI = i; }
+  }
+  if (maxD > eps) {
+    const L = rdp(pts.slice(0, maxI + 1), eps);
+    const R = rdp(pts.slice(maxI), eps);
+    return [...L.slice(0, -1), ...R];
+  }
+  return [s, e];
+}
+
+// How straight is an open path? (1 = perfectly straight)
 function pathStraightness(pts) {
   const n = pts.length;
-  const d = Math.hypot(pts[n - 1].x - pts[0].x, pts[n - 1].y - pts[0].y);
+  const direct = Math.hypot(pts[n - 1].x - pts[0].x, pts[n - 1].y - pts[0].y);
   let total = 0;
   for (let i = 1; i < n; i++) total += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
-  return total > 1 ? d / total : 0;
+  return total > 1 ? direct / total : 0;
 }
+
 function smartRecognize(rawPts) {
   if (rawPts.length < 6) return null;
-  const pts = dsPoints(rawPts, Math.min(rawPts.length, 50));
+  // Use more points for better accuracy
+  const pts = dsPoints(rawPts, Math.min(rawPts.length, 80));
   const n = pts.length;
   const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minY = Math.min(...ys), maxY = Math.max(...ys);
-  const W = maxX - minX, H = maxY - minY, diag = Math.hypot(W, H);
+  const W = maxX - minX, H = maxY - minY;
+  const diag = Math.hypot(W, H);
   if (diag < 20) return null;
   const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+
   const closeDist = Math.hypot(pts[0].x - pts[n - 1].x, pts[0].y - pts[n - 1].y);
-  const isClosed = closeDist < diag * 0.35;
+  const isClosed = closeDist < diag * 0.38;
 
   if (isClosed) {
-    const dists = pts.map(p => Math.hypot(p.x - cx, p.y - cy));
-    const meanR = dists.reduce((a, b) => a + b) / n;
-    const stdR = Math.sqrt(dists.reduce((s, d) => s + (d - meanR) ** 2, 0) / n);
-    const cv = stdR / meanR;
-    if (cv < 0.22) return { type: 'circle', cx, cy, rx: W / 2, ry: H / 2, label: 'Hình tròn' };
-    if (cv < 0.48) return { type: 'rect', x: minX, y: minY, w: W, h: H, label: 'Hình chữ nhật' };
+    // ── Method 1: RDP corner count ────────────────────────────────────────
+    // Squares/rects have 3-4 sharp corners; circles have none
+    const simp = rdp(pts, diag * 0.055);
+    let sharpCorners = 0;
+    for (let i = 1; i < simp.length - 1; i++) {
+      const p0 = simp[i - 1], p1 = simp[i], p2 = simp[i + 1];
+      const a1 = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+      const a2 = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+      // Angle change at this point
+      const da = Math.abs(((a2 - a1 + 3 * Math.PI) % (2 * Math.PI)) - Math.PI);
+      if (da > 0.45) sharpCorners++; // ~26° threshold
+    }
+
+    // ── Method 2: Centroid distance ratio ─────────────────────────────────
+    // Circle: all points same distance from center → ratio ≈ 1.0
+    // Square: corners farther than edges → ratio ≈ √2 ≈ 1.41
+    const dists = pts.map(p => Math.hypot(p.x - cx, p.y - cy)).sort((a, b) => a - b);
+    const lo = dists[Math.floor(n * 0.05)] || dists[0];
+    const hi = dists[Math.floor(n * 0.95)] || dists[n - 1];
+    const ratio = lo > 0.5 ? hi / lo : 10;
+
+    // Rectangle/square: sharp corners detected OR large distance variation
+    if (sharpCorners >= 3 || ratio > 1.30) {
+      return { type: 'rect', x: minX, y: minY, w: W, h: H, label: 'Hình chữ nhật' };
+    }
+    // Circle/ellipse: smooth curve, uniform distances
+    return { type: 'circle', cx, cy, rx: W / 2, ry: H / 2, label: 'Hình tròn / Elip' };
   }
 
+  // ── Open shape: line or arrow ────────────────────────────────────────────
   const str = pathStraightness(pts);
   if (str > 0.82 && diag > 25) {
     const bodyAngle = Math.atan2(pts[n - 1].y - pts[0].y, pts[n - 1].x - pts[0].x);
-    const backAngle = Math.atan2(pts[Math.floor(n * 0.82)].y - pts[n - 1].y, pts[Math.floor(n * 0.82)].x - pts[n - 1].x);
-    const diff = Math.abs(((bodyAngle - backAngle + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
-    if (diff > 0.5 && diff < 2.6) return { type: 'arrow', x1: pts[0].x, y1: pts[0].y, x2: pts[n - 1].x, y2: pts[n - 1].y, label: 'Mũi tên' };
+    const backPt = pts[Math.floor(n * 0.82)];
+    const backAngle = Math.atan2(backPt.y - pts[n - 1].y, backPt.x - pts[n - 1].x);
+    const diff = Math.abs(((bodyAngle - backAngle + 3 * Math.PI) % (2 * Math.PI)) - Math.PI);
+    if (diff > 0.5 && diff < 2.6)
+      return { type: 'arrow', x1: pts[0].x, y1: pts[0].y, x2: pts[n - 1].x, y2: pts[n - 1].y, label: 'Mũi tên' };
     return { type: 'line', x1: pts[0].x, y1: pts[0].y, x2: pts[n - 1].x, y2: pts[n - 1].y, label: 'Đường thẳng' };
   }
   return null;
