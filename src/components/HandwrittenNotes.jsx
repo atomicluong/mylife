@@ -1,539 +1,566 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  ArrowLeft, 
-  Undo2, 
-  Redo2, 
-  Save, 
-  Plus, 
-  Trash2, 
-  Edit3, 
-  Hand, 
-  PenTool, 
-  Highlighter, 
-  Eraser, 
-  ChevronLeft, 
-  ChevronRight, 
-  ZoomIn, 
-  ZoomOut, 
-  Maximize2, 
-  FolderOpen,
-  Check,
-  Menu
+import {
+  Undo2, Redo2, Save, Plus, Trash2, Edit3,
+  Eraser, ChevronLeft, ZoomIn, ZoomOut, Maximize2,
+  Check, Menu, MousePointer2, Minus, Square, Download,
+  Circle as CircleIcon,
 } from 'lucide-react';
 import { notesDb } from '../utils/notesDb';
 
+const DEFAULT_PRESETS = [
+  { type: 'pen',         color: '#1a1a2e', width: 2,  label: 'Mảnh' },
+  { type: 'pen',         color: '#1e40af', width: 3,  label: 'Xanh' },
+  { type: 'pen',         color: '#dc2626', width: 3,  label: 'Đỏ' },
+  { type: 'pen',         color: '#15803d', width: 2,  label: 'Lá' },
+  { type: 'highlighter', color: '#fbbf24', width: 12, label: 'Vàng' },
+  { type: 'highlighter', color: '#86efac', width: 12, label: 'Xanh' },
+];
+
+const COLORS = [
+  '#000000','#374151','#6b7280','#d1d5db',
+  '#1e40af','#2563eb','#60a5fa','#bfdbfe',
+  '#dc2626','#ef4444','#fca5a5','#fee2e2',
+  '#15803d','#16a34a','#86efac','#dcfce7',
+  '#92400e','#d97706','#fbbf24','#fef9c3',
+  '#7c3aed','#8b5cf6','#c4b5fd','#ede9fe',
+  '#be185d','#ec4899','#f9a8d4','#fce7f3',
+  '#FFFFFF',
+];
+
+function ToolBtn({ active, onClick, title, children }) {
+  return (
+    <button onClick={onClick} title={title} style={{
+      border: `2px solid ${active ? '#5c33c1' : 'transparent'}`,
+      background: active ? '#ede9fb' : 'transparent',
+      color: active ? '#5c33c1' : '#555',
+      borderRadius: '7px', padding: '5px 7px', cursor: 'pointer',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      transition: 'all 0.12s', minWidth: '32px', minHeight: '32px', flexShrink: 0,
+    }}>
+      {children}
+    </button>
+  );
+}
+
+function Sep() {
+  return <div style={{ width: '1px', height: '28px', background: '#e5e5e5', margin: '0 6px', flexShrink: 0 }} />;
+}
+
 export default function HandwrittenNotes() {
-  // State quản lý danh sách Ghi chú từ IndexedDB
-  const [notes, setNotes] = useState([]);
+  const [notes, setNotes]               = useState([]);
   const [currentNoteId, setCurrentNoteId] = useState(null);
-  const [noteTitle, setNoteTitle] = useState('Phác thảo OKRs Chiến lược');
-  
-  // Trạng thái vẽ
-  const [strokes, setStrokes] = useState([]);
-  const [tool, setTool] = useState('pen'); // pen, highlighter, eraser, hand
-  const [color, setColor] = useState('#FFFFFF');
-  const [lineWidth, setLineWidth] = useState(3);
-  
-  // Trạng thái Canvas vô hạn (Pan & Zoom)
-  const [offsetX, setOffsetX] = useState(0);
-  const [offsetY, setOffsetY] = useState(0);
-  const [zoomScale, setZoomScale] = useState(1);
-  
-  // Trạng thái UI
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [saveStatus, setSaveStatus] = useState('idle'); // idle, saving, saved, error
+  const [noteTitle, setNoteTitle]       = useState('');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [titleInput, setTitleInput] = useState('');
+  const [titleInput, setTitleInput]     = useState('');
 
-  // Lịch sử Undo / Redo
-  const [history, setHistory] = useState([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [strokes, setStrokes]           = useState([]);
+  const [tool, setTool]                 = useState('pen');
+  const [activePenPreset, setActivePenPreset] = useState(0);
+  const [penPresets]                    = useState(DEFAULT_PRESETS);
+  const [color, setColor]               = useState('#1a1a2e');
+  const [lineWidth, setLineWidth]       = useState(3);
+  const [background, setBackground]     = useState('dots');
 
-  // Refs
-  const canvasRef = useRef(null);
-  const containerRef = useRef(null);
-  const isDrawing = useRef(false);
-  const currentPoints = useRef([]);
-  const lastPointerPos = useRef({ x: 0, y: 0 });
-  const activePointers = useRef(new Map());
+  const [offsetX, setOffsetX]           = useState(0);
+  const [offsetY, setOffsetY]           = useState(0);
+  const [zoomScale, setZoomScale]       = useState(1);
+
+  const [selectedIds, setSelectedIds]   = useState(new Set());
+  const [saveStatus, setSaveStatus]     = useState('idle');
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showBgPicker, setShowBgPicker] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  const [history, setHistory]           = useState([[]]);
+  const [historyIndex, setHistoryIndex] = useState(0);
+
+  const canvasRef        = useRef(null);
+  const containerRef     = useRef(null);
+  const isDrawing        = useRef(false);
+  const currentPoints    = useRef([]);
+  const shapeStart       = useRef(null);
+  const lassoPath        = useRef([]);
+  const lastPointerPos   = useRef({ x: 0, y: 0 });
+  const activePointers   = useRef(new Map());
   const initialPinchDist = useRef(0);
   const initialPinchZoom = useRef(1);
-  const hasErasedThisSession = useRef(false);
-  
-  // Màu sắc cao cấp thiết lập sẵn
-  const premiumColors = [
-    { name: 'White', value: '#FFFFFF' },
-    { name: 'Red', value: '#FF3B30' },
-    { name: 'Gold', value: '#FFCC00' },
-    { name: 'Blue', value: '#007AFF' },
-    { name: 'Green', value: '#34C759' }
-  ];
+  const hasErased        = useRef(false);
 
-  // --- 1. Quản lý tải và tạo ghi chú ---
-  
-  // Load danh sách ghi chú ban đầu
-  useEffect(() => {
-    loadAllNotes();
-  }, []);
+  // Keep refs in sync for use inside event handlers
+  const strokesRef      = useRef(strokes);
+  const offsetXRef      = useRef(offsetX);
+  const offsetYRef      = useRef(offsetY);
+  const zoomScaleRef    = useRef(zoomScale);
+  const toolRef         = useRef(tool);
+  const colorRef        = useRef(color);
+  const lineWidthRef    = useRef(lineWidth);
+  const backgroundRef   = useRef(background);
+  const selectedIdsRef  = useRef(selectedIds);
+  const historyRef      = useRef(history);
+  const historyIndexRef = useRef(historyIndex);
 
-  const loadAllNotes = async () => {
+  useEffect(() => { strokesRef.current = strokes; },           [strokes]);
+  useEffect(() => { offsetXRef.current = offsetX; },           [offsetX]);
+  useEffect(() => { offsetYRef.current = offsetY; },           [offsetY]);
+  useEffect(() => { zoomScaleRef.current = zoomScale; },       [zoomScale]);
+  useEffect(() => { toolRef.current = tool; },                 [tool]);
+  useEffect(() => { colorRef.current = color; },               [color]);
+  useEffect(() => { lineWidthRef.current = lineWidth; },       [lineWidth]);
+  useEffect(() => { backgroundRef.current = background; },     [background]);
+  useEffect(() => { selectedIdsRef.current = selectedIds; },   [selectedIds]);
+  useEffect(() => { historyRef.current = history; },           [history]);
+  useEffect(() => { historyIndexRef.current = historyIndex; }, [historyIndex]);
+
+  // ── DB ──────────────────────────────────────────────────────────────
+  useEffect(() => { loadAll(); }, []);
+
+  const loadAll = async () => {
     try {
-      const allNotes = await notesDb.getAllNotes();
-      setNotes(allNotes);
-      
-      if (allNotes.length > 0) {
-        // Tải ghi chú đầu tiên nếu chưa chọn ghi chú nào
-        if (!currentNoteId) {
-          loadNote(allNotes[0]);
-        }
-      } else {
-        // Nếu chưa có ghi chú nào, tự động tạo mới
-        handleCreateNewNote();
-      }
-    } catch (err) {
-      console.error('Lỗi khi tải danh sách ghi chú:', err);
-    }
+      const all = await notesDb.getAllNotes();
+      setNotes(all);
+      if (all.length > 0) { if (!currentNoteId) openNote(all[0]); }
+      else createNote();
+    } catch (e) { console.error(e); }
   };
 
-  const loadNote = (note) => {
+  const openNote = (note) => {
     setCurrentNoteId(note.id);
     setNoteTitle(note.title);
     setTitleInput(note.title);
     setStrokes(note.strokes || []);
-    setOffsetX(note.offsetX !== undefined ? note.offsetX : 0);
-    setOffsetY(note.offsetY !== undefined ? note.offsetY : 0);
-    setZoomScale(note.zoomScale !== undefined ? note.zoomScale : 1);
-    
-    // Reset lịch sử Undo/Redo cho note mới
+    setOffsetX(note.offsetX || 0);
+    setOffsetY(note.offsetY || 0);
+    setZoomScale(note.zoomScale || 1);
+    setBackground(note.background || 'dots');
+    setSelectedIds(new Set());
     setHistory([note.strokes || []]);
     setHistoryIndex(0);
+    setIsSidebarOpen(false);
   };
 
-  const handleCreateNewNote = async () => {
-    const newNote = {
-      id: Math.random().toString(36).substring(2, 15),
-      title: `Ghi chú mới ${new Date().toLocaleDateString('vi-VN')}`,
-      strokes: [],
-      offsetX: 0,
-      offsetY: 0,
-      zoomScale: 1,
-      updatedAt: Date.now()
+  const createNote = async () => {
+    const note = {
+      id: Math.random().toString(36).slice(2),
+      title: `Ghi chú ${new Date().toLocaleDateString('vi-VN')}`,
+      strokes: [], offsetX: 0, offsetY: 0, zoomScale: 1,
+      background: 'dots', updatedAt: Date.now(),
     };
-    
-    try {
-      await notesDb.saveNote(newNote);
-      await loadAllNotes();
-      loadNote(newNote);
-      setIsSidebarOpen(false); // Đóng sidebar để tập trung vẽ
-    } catch (err) {
-      console.error('Lỗi tạo ghi chú mới:', err);
-    }
+    try { await notesDb.saveNote(note); await loadAll(); openNote(note); }
+    catch (e) { console.error(e); }
   };
 
-  const handleDeleteNote = async (id, e) => {
+  const deleteNote = async (id, e) => {
     e.stopPropagation();
-    if (!window.confirm('Bạn có chắc chắn muốn xóa ghi chú này không?')) return;
-    
+    if (!window.confirm('Xóa ghi chú này?')) return;
     try {
       await notesDb.deleteNote(id);
-      const remainingNotes = notes.filter(n => n.id !== id);
-      setNotes(remainingNotes);
-      
-      if (currentNoteId === id) {
-        if (remainingNotes.length > 0) {
-          loadNote(remainingNotes[0]);
-        } else {
-          handleCreateNewNote();
-        }
-      }
-    } catch (err) {
-      console.error('Lỗi khi xóa ghi chú:', err);
-    }
+      const rest = notes.filter(n => n.id !== id);
+      setNotes(rest);
+      if (currentNoteId === id) { rest.length > 0 ? openNote(rest[0]) : createNote(); }
+    } catch (e) { console.error(e); }
   };
 
-  const handleSaveNote = async () => {
+  const save = async (overrideStrokes) => {
     if (!currentNoteId) return;
     setSaveStatus('saving');
-    
-    const noteData = {
-      id: currentNoteId,
-      title: noteTitle,
-      strokes: strokes,
-      offsetX: offsetX,
-      offsetY: offsetY,
-      zoomScale: zoomScale
-    };
-    
     try {
-      await notesDb.saveNote(noteData);
+      await notesDb.saveNote({
+        id: currentNoteId, title: noteTitle,
+        strokes: overrideStrokes ?? strokesRef.current,
+        offsetX: offsetXRef.current, offsetY: offsetYRef.current,
+        zoomScale: zoomScaleRef.current, background: backgroundRef.current,
+        updatedAt: Date.now(),
+      });
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
-      
-      // Cập nhật lại danh sách ghi chú
-      const allNotes = await notesDb.getAllNotes();
-      setNotes(allNotes);
-    } catch (err) {
-      console.error('Lỗi khi lưu ghi chú:', err);
-      setSaveStatus('error');
-      setTimeout(() => setSaveStatus('idle'), 3000);
-    }
+      const all = await notesDb.getAllNotes();
+      setNotes(all);
+    } catch (e) { setSaveStatus('error'); setTimeout(() => setSaveStatus('idle'), 3000); }
   };
 
-  const handleRenameNote = async () => {
+  const renameNote = async () => {
     if (!titleInput.trim()) return;
     setNoteTitle(titleInput);
     setIsEditingTitle(false);
-    
     if (currentNoteId) {
-      const noteData = {
-        id: currentNoteId,
-        title: titleInput,
-        strokes: strokes,
-        offsetX: offsetX,
-        offsetY: offsetY,
-        zoomScale: zoomScale
-      };
-      
-      try {
-        await notesDb.saveNote(noteData);
-        // Refresh danh sách
-        const allNotes = await notesDb.getAllNotes();
-        setNotes(allNotes);
-      } catch (err) {
-        console.error('Lỗi đổi tên ghi chú:', err);
-      }
+      await notesDb.saveNote({
+        id: currentNoteId, title: titleInput,
+        strokes: strokesRef.current,
+        offsetX: offsetXRef.current, offsetY: offsetYRef.current,
+        zoomScale: zoomScaleRef.current, background: backgroundRef.current,
+        updatedAt: Date.now(),
+      });
+      const all = await notesDb.getAllNotes();
+      setNotes(all);
     }
   };
 
-  // Tự động lưu sau 10 giây khi có thay đổi nét vẽ
   useEffect(() => {
-    if (strokes.length === 0 && offsetX === 0 && offsetY === 0 && zoomScale === 1) return;
-    
-    const timer = setTimeout(() => {
-      handleSaveNote();
-    }, 10000);
+    if (!currentNoteId) return;
+    const t = setTimeout(() => save(), 8000);
+    return () => clearTimeout(t);
+  }, [strokes, offsetX, offsetY, zoomScale, background]);
 
-    return () => clearTimeout(timer);
-  }, [strokes, offsetX, offsetY, zoomScale]);
-
-
-  // --- 2. Bộ xử lý Undo / Redo ---
-  
-  const pushToHistory = (newStrokes) => {
-    const updatedHistory = history.slice(0, historyIndex + 1);
-    updatedHistory.push(newStrokes);
-    setHistory(updatedHistory);
-    setHistoryIndex(updatedHistory.length - 1);
+  // ── History ─────────────────────────────────────────────────────────
+  const pushHistory = (next) => {
+    const h = historyRef.current.slice(0, historyIndexRef.current + 1);
+    h.push(next);
+    setHistory(h);
+    setHistoryIndex(h.length - 1);
   };
 
-  const handleUndo = () => {
-    if (historyIndex > 0) {
-      const newIndex = historyIndex - 1;
-      setHistoryIndex(newIndex);
-      setStrokes(history[newIndex]);
+  const undo = () => {
+    if (historyIndexRef.current > 0) {
+      const i = historyIndexRef.current - 1;
+      setHistoryIndex(i);
+      setStrokes(historyRef.current[i]);
+      setSelectedIds(new Set());
     }
   };
 
-  const handleRedo = () => {
-    if (historyIndex < history.length - 1) {
-      const newIndex = historyIndex + 1;
-      setHistoryIndex(newIndex);
-      setStrokes(history[newIndex]);
+  const redo = () => {
+    if (historyIndexRef.current < historyRef.current.length - 1) {
+      const i = historyIndexRef.current + 1;
+      setHistoryIndex(i);
+      setStrokes(historyRef.current[i]);
+      setSelectedIds(new Set());
     }
   };
 
-
-  // --- 3. Công thức tính toán tọa độ thế giới (World Coordinate) ---
-
-  const getCanvasMousePos = (clientX, clientY) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    const screenX = clientX - rect.left;
-    const screenY = clientY - rect.top;
-    
-    // Chuyển đổi từ tọa độ màn hình sang tọa độ thế giới trong Canvas vô hạn
-    const worldX = (screenX - offsetX) / zoomScale;
-    const worldY = (screenY - offsetY) / zoomScale;
-    
-    return { worldX, worldY, screenX, screenY };
+  // ── Canvas helpers ───────────────────────────────────────────────────
+  const toWorld = (clientX, clientY) => {
+    const r = canvasRef.current?.getBoundingClientRect();
+    if (!r) return { worldX: 0, worldY: 0 };
+    return {
+      worldX: (clientX - r.left - offsetXRef.current) / zoomScaleRef.current,
+      worldY: (clientY - r.top  - offsetYRef.current) / zoomScaleRef.current,
+    };
   };
 
-
-  // --- 4. Thiết lập Canvas & Kết xuất Đồ họa (Render loop) ---
-
-  const render = () => {
+  // ── Render ───────────────────────────────────────────────────────────
+  const renderCanvas = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    const width = canvas.width / (window.devicePixelRatio || 1);
-    const height = canvas.height / (window.devicePixelRatio || 1);
-    
-    // Clear canvas
-    ctx.clearRect(0, 0, width, height);
-    
-    // Vẽ nền Charcoal tối đẳng cấp (#121212)
-    ctx.fillStyle = '#121212';
-    ctx.fillRect(0, 0, width, height);
-    
-    // Vẽ lưới Dynamic Dot-matrix
-    drawGrid(ctx, width, height);
-    
-    // Vẽ các nét vẽ hiện có và nét đang vẽ dở
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.width / dpr;
+    const H = canvas.height / dpr;
+
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#FEFDF8';
+    ctx.fillRect(0, 0, W, H);
+
+    drawBackground(ctx, W, H);
+
     ctx.save();
-    ctx.translate(offsetX, offsetY);
-    ctx.scale(zoomScale, zoomScale);
-    
-    // Vẽ tất cả nét đã lưu
-    drawStrokes(ctx, strokes);
-    
-    // Vẽ nét hiện tại đang vẽ dở
-    if (isDrawing.current && currentPoints.current.length > 0) {
-      const tempStroke = {
-        type: tool,
-        color: color,
-        width: lineWidth,
-        points: currentPoints.current
-      };
-      drawStrokes(ctx, [tempStroke]);
-    }
-    
-    ctx.restore();
-  };
+    ctx.translate(offsetXRef.current, offsetYRef.current);
+    ctx.scale(zoomScaleRef.current, zoomScaleRef.current);
 
-  // Lắng nghe thay đổi kích thước container để scale canvas sắc nét
-  useEffect(() => {
-    const handleResize = () => {
-      const canvas = canvasRef.current;
-      const container = containerRef.current;
-      if (!canvas || !container) return;
-      
-      const dpr = window.devicePixelRatio || 1;
-      const width = container.clientWidth;
-      const height = container.clientHeight;
-      
-      canvas.width = width * dpr;
-      canvas.height = height * dpr;
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
-      
-      const ctx = canvas.getContext('2d');
-      ctx.scale(dpr, dpr);
-      
-      render();
-    };
+    drawStrokes(ctx, strokesRef.current);
 
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [strokes, offsetX, offsetY, zoomScale, tool, color, lineWidth]);
-
-  // Vẽ lại mỗi khi strokes thay đổi
-  useEffect(() => {
-    render();
-  }, [strokes, offsetX, offsetY, zoomScale]);
-
-  // Vẽ lưới chấm động
-  const drawGrid = (ctx, width, height) => {
-    ctx.save();
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)'; // Chấm xám mờ tinh tế
-    
-    const baseSpacing = 28; // Khoảng cách lưới cơ bản
-    const gridSpacing = baseSpacing * zoomScale;
-    
-    // Tính toán điểm bắt đầu vẽ lưới để tối ưu hiệu năng (chỉ vẽ phần hiển thị)
-    const startX = (offsetX % gridSpacing) - gridSpacing;
-    const startY = (offsetY % gridSpacing) - gridSpacing;
-    
-    // Tự điều chỉnh kích thước chấm khi zoom xa/gần
-    const dotRadius = Math.max(0.6, 1.1 * zoomScale);
-    
-    for (let x = startX; x < width + gridSpacing; x += gridSpacing) {
-      for (let y = startY; y < height + gridSpacing; y += gridSpacing) {
-        ctx.beginPath();
-        ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-    ctx.restore();
-  };
-
-  // Vẽ nét vẽ
-  const drawStrokes = (ctx, strokesToDraw) => {
-    strokesToDraw.forEach(stroke => {
-      if (stroke.points.length === 0) return;
-      
-      ctx.save();
-      
-      // Áp dụng độ trong suốt của Highlighter hoặc Pen thường
-      if (stroke.type === 'highlighter') {
-        ctx.globalAlpha = 0.4;
-        ctx.strokeStyle = stroke.color;
-      } else {
-        ctx.globalAlpha = 1.0;
-        ctx.strokeStyle = stroke.color;
-      }
-      
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      
-      const pts = stroke.points;
-      
-      if (pts.length === 1) {
-        // Chỉ vẽ 1 chấm tròn nếu click/tap 1 điểm
-        ctx.beginPath();
-        ctx.fillStyle = stroke.color;
-        const p = pts[0];
-        const pSize = stroke.width * (p.p !== undefined ? p.p * 1.5 : 1.0);
-        ctx.arc(p.x, p.y, pSize / 2, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        // Sử dụng nét vẽ nét bút mực nếu là bút Pen
-        if (stroke.type === 'pen') {
-          // Vẽ từng đoạn để thay đổi độ dày theo lực nhấn của bút stylus
-          for (let i = 1; i < pts.length; i++) {
-            const p1 = pts[i - 1];
-            const p2 = pts[i];
-            
-            ctx.beginPath();
-            ctx.moveTo(p1.x, p1.y);
-            ctx.lineTo(p2.x, p2.y);
-            
-            // Tính toán độ dày dựa vào lực nhấn pressure
-            const pressure1 = p1.p !== undefined ? p1.p : 0.5;
-            const pressure2 = p2.p !== undefined ? p2.p : 0.5;
-            const avgPressure = (pressure1 + pressure2) / 2;
-            
-            // Hệ số lực nhấn dao động 0.4x đến 1.6x độ dày cơ bản
-            const dynamicWidth = stroke.width * (0.4 + avgPressure * 1.2);
-            
-            ctx.lineWidth = Math.max(0.8, dynamicWidth);
-            ctx.stroke();
-          }
-        } else {
-          // Bút highlighter vẽ nét đều để tạo cảm giác đánh dấu khối
-          ctx.lineWidth = stroke.width * 2.5; // highlighter dày hơn
+    // selection highlight
+    if (selectedIdsRef.current.size > 0) {
+      strokesRef.current.forEach(s => {
+        if (!selectedIdsRef.current.has(s.id)) return;
+        ctx.save();
+        ctx.strokeStyle = '#2563eb';
+        ctx.lineWidth = (s.width + 8) / zoomScaleRef.current;
+        ctx.globalAlpha = 0.25;
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        if (s.points.length > 1) {
           ctx.beginPath();
-          ctx.moveTo(pts[0].x, pts[0].y);
-          
-          for (let i = 1; i < pts.length - 1; i++) {
-            const xc = (pts[i].x + pts[i + 1].x) / 2;
-            const yc = (pts[i].y + pts[i + 1].y) / 2;
-            ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
-          }
-          
-          if (pts.length > 1) {
-            const last = pts[pts.length - 1];
-            ctx.lineTo(last.x, last.y);
-          }
+          s.points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
           ctx.stroke();
         }
+        ctx.restore();
+      });
+    }
+
+    const t = toolRef.current;
+
+    // lasso preview
+    if (isDrawing.current && t === 'lasso' && lassoPath.current.length > 1) {
+      ctx.save();
+      ctx.strokeStyle = '#2563eb';
+      ctx.lineWidth = 1.5 / zoomScaleRef.current;
+      ctx.setLineDash([5 / zoomScaleRef.current, 4 / zoomScaleRef.current]);
+      ctx.fillStyle = 'rgba(37,99,235,0.06)';
+      ctx.beginPath();
+      lassoPath.current.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      ctx.restore();
+    }
+
+    // shape preview
+    if (isDrawing.current && (t === 'line' || t === 'rect' || t === 'circle') && shapeStart.current && currentPoints.current.length > 0) {
+      const s = shapeStart.current;
+      const e = currentPoints.current[0];
+      ctx.save();
+      ctx.strokeStyle = colorRef.current;
+      ctx.lineWidth = lineWidthRef.current;
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.setLineDash([6 / zoomScaleRef.current, 4 / zoomScaleRef.current]);
+      ctx.beginPath();
+      if (t === 'line') { ctx.moveTo(s.x, s.y); ctx.lineTo(e.x, e.y); }
+      else if (t === 'rect') { ctx.rect(s.x, s.y, e.x - s.x, e.y - s.y); }
+      else {
+        const rx = Math.abs(e.x - s.x) / 2, ry = Math.abs(e.y - s.y) / 2;
+        ctx.ellipse((s.x + e.x) / 2, (s.y + e.y) / 2, rx, ry, 0, 0, Math.PI * 2);
       }
-      
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // in-progress freehand stroke
+    if (isDrawing.current && currentPoints.current.length > 0 && t !== 'lasso' && t !== 'line' && t !== 'rect' && t !== 'circle' && t !== 'eraser') {
+      drawStrokes(ctx, [{
+        type: t === 'highlighter' ? 'highlighter' : 'pen',
+        color: colorRef.current, width: lineWidthRef.current,
+        points: currentPoints.current,
+      }]);
+    }
+
+    ctx.restore();
+  };
+
+  const drawBackground = (ctx, W, H) => {
+    const bg = backgroundRef.current;
+    if (bg === 'blank') return;
+    const spacing = 24 * zoomScaleRef.current;
+    const sx = (offsetXRef.current % spacing) - spacing;
+    const sy = (offsetYRef.current % spacing) - spacing;
+    ctx.save();
+
+    if (bg === 'dots') {
+      ctx.fillStyle = 'rgba(0,0,0,0.13)';
+      const r = Math.max(0.7, 1.2 * Math.min(zoomScaleRef.current, 1.5));
+      for (let x = sx; x < W + spacing; x += spacing)
+        for (let y = sy; y < H + spacing; y += spacing) {
+          ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+        }
+    } else if (bg === 'lines') {
+      ctx.strokeStyle = 'rgba(0,0,0,0.09)';
+      ctx.lineWidth = 0.8;
+      for (let y = sy; y < H + spacing; y += spacing) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      }
+      const mx = 48 * zoomScaleRef.current + offsetXRef.current;
+      ctx.strokeStyle = 'rgba(220,80,80,0.2)';
+      ctx.beginPath(); ctx.moveTo(mx, 0); ctx.lineTo(mx, H); ctx.stroke();
+    } else if (bg === 'grid') {
+      ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+      ctx.lineWidth = 0.8;
+      for (let x = sx; x < W + spacing; x += spacing) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+      }
+      for (let y = sy; y < H + spacing; y += spacing) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      }
+    }
+    ctx.restore();
+  };
+
+  const drawStrokes = (ctx, list) => {
+    list.forEach(stroke => {
+      if (!stroke.points?.length) return;
+      ctx.save();
+      if (stroke.type === 'highlighter') {
+        ctx.globalAlpha = 0.38;
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.strokeStyle = stroke.color;
+        ctx.lineWidth = stroke.width * 2.5;
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        const pts = stroke.points;
+        ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length - 1; i++) {
+          const xc = (pts[i].x + pts[i+1].x) / 2;
+          const yc = (pts[i].y + pts[i+1].y) / 2;
+          ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
+        }
+        if (pts.length > 1) ctx.lineTo(pts[pts.length-1].x, pts[pts.length-1].y);
+        ctx.stroke();
+      } else {
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.strokeStyle = stroke.color;
+        const pts = stroke.points;
+        if (pts.length === 1) {
+          ctx.fillStyle = stroke.color;
+          ctx.beginPath();
+          ctx.arc(pts[0].x, pts[0].y, stroke.width / 2, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          for (let i = 1; i < pts.length; i++) {
+            const p1 = pts[i-1], p2 = pts[i];
+            const pressure = ((p1.p ?? 0.5) + (p2.p ?? 0.5)) / 2;
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+            ctx.lineWidth = Math.max(0.5, stroke.width * (0.4 + pressure * 1.2));
+            ctx.stroke();
+          }
+        }
+      }
       ctx.restore();
     });
   };
 
+  const renderRef = useRef(renderCanvas);
+  renderRef.current = renderCanvas;
 
-  // --- 5. Công cụ Tẩy nét (Stroke-based Eraser) ---
+  // resize + redraw
+  useEffect(() => {
+    const resize = () => {
+      const canvas = canvasRef.current;
+      const cont = containerRef.current;
+      if (!canvas || !cont) return;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = cont.clientWidth * dpr;
+      canvas.height = cont.clientHeight * dpr;
+      canvas.style.width = `${cont.clientWidth}px`;
+      canvas.style.height = `${cont.clientHeight}px`;
+      canvas.getContext('2d').scale(dpr, dpr);
+      renderRef.current();
+    };
+    resize();
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
 
-  const handleErasing = (worldX, worldY) => {
-    const eraserRadius = 16; // bán kính cục tẩy (pixel)
-    const threshold = eraserRadius / zoomScale;
-    
-    const remainingStrokes = strokes.filter(stroke => {
-      // Kiểm tra xem khoảng cách từ nét tẩy tới bất kỳ điểm nào của stroke có dưới ngưỡng không
-      const isClose = stroke.points.some(p => {
-        const dx = p.x - worldX;
-        const dy = p.y - worldY;
-        return dx * dx + dy * dy < threshold * threshold;
+  useEffect(() => { renderRef.current(); },
+    [strokes, offsetX, offsetY, zoomScale, background, selectedIds]);
+
+  // mouse-wheel zoom
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const onWheel = (e) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+      setZoomScale(prev => Math.max(0.15, Math.min(6, prev * factor)));
+    };
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', onWheel);
+  }, []);
+
+  // close popups on outside click
+  useEffect(() => {
+    if (!showColorPicker && !showBgPicker) return;
+    const close = () => { setShowColorPicker(false); setShowBgPicker(false); };
+    const t = setTimeout(() => document.addEventListener('pointerdown', close), 0);
+    return () => { clearTimeout(t); document.removeEventListener('pointerdown', close); };
+  }, [showColorPicker, showBgPicker]);
+
+  // ── Eraser ───────────────────────────────────────────────────────────
+  const erase = (wx, wy) => {
+    const threshold = 18 / zoomScaleRef.current;
+    const remaining = strokesRef.current.filter(s => {
+      const hit = s.points.some(p => {
+        const dx = p.x - wx, dy = p.y - wy;
+        return dx*dx + dy*dy < threshold*threshold;
       });
-      
-      if (isClose) {
-        hasErasedThisSession.current = true;
-      }
-      return !isClose;
+      if (hit) hasErased.current = true;
+      return !hit;
     });
-
-    if (remainingStrokes.length !== strokes.length) {
-      setStrokes(remainingStrokes);
-    }
+    if (remaining.length !== strokesRef.current.length) setStrokes(remaining);
   };
 
+  // ── Lasso ────────────────────────────────────────────────────────────
+  const finalizeLasso = (path) => {
+    if (path.length < 3) return;
+    const xs = path.map(p => p.x), ys = path.map(p => p.y);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const ids = new Set();
+    strokesRef.current.forEach(s => {
+      if (s.points.some(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY))
+        ids.add(s.id);
+    });
+    setSelectedIds(ids);
+  };
 
-  // --- 6. Xử lý các Sự kiện Pointer (Mouse/Stylus/Touch) ---
+  const deleteSelected = () => {
+    const remaining = strokesRef.current.filter(s => !selectedIdsRef.current.has(s.id));
+    setStrokes(remaining);
+    pushHistory(remaining);
+    setSelectedIds(new Set());
+  };
 
-  const handlePointerDown = (e) => {
+  // ── Shape → points ───────────────────────────────────────────────────
+  const shapeToPoints = (t, s, e) => {
+    if (t === 'line') return [{ x: s.x, y: s.y, p: 0.5 }, { x: e.x, y: e.y, p: 0.5 }];
+    if (t === 'rect') return [
+      { x: s.x, y: s.y, p: 0.5 }, { x: e.x, y: s.y, p: 0.5 },
+      { x: e.x, y: e.y, p: 0.5 }, { x: s.x, y: e.y, p: 0.5 },
+      { x: s.x, y: s.y, p: 0.5 },
+    ];
+    if (t === 'circle') {
+      const rx = Math.abs(e.x - s.x) / 2, ry = Math.abs(e.y - s.y) / 2;
+      const cx = (s.x + e.x) / 2, cy = (s.y + e.y) / 2;
+      return Array.from({ length: 65 }, (_, i) => {
+        const a = (i / 64) * Math.PI * 2;
+        return { x: cx + rx * Math.cos(a), y: cy + ry * Math.sin(a), p: 0.5 };
+      });
+    }
+    return [];
+  };
+
+  // ── Pointer events ───────────────────────────────────────────────────
+  const onPointerDown = (e) => {
     e.preventDefault();
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     canvas.setPointerCapture(e.pointerId);
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
-    const { worldX, worldY } = getCanvasMousePos(e.clientX, e.clientY);
     lastPointerPos.current = { x: e.clientX, y: e.clientY };
 
-    // A. 2+ ngón tay: pinch zoom + pan
+    const { worldX, worldY } = toWorld(e.clientX, e.clientY);
+
     if (activePointers.current.size >= 2) {
-      isDrawing.current = false;
-      currentPoints.current = [];
-      const pointerIds = Array.from(activePointers.current.keys());
-      const p1 = activePointers.current.get(pointerIds[0]);
-      const p2 = activePointers.current.get(pointerIds[1]);
+      isDrawing.current = false; currentPoints.current = [];
+      const [id1, id2] = Array.from(activePointers.current.keys());
+      const p1 = activePointers.current.get(id1);
+      const p2 = activePointers.current.get(id2);
       initialPinchDist.current = Math.hypot(p1.x - p2.x, p1.y - p2.y);
-      initialPinchZoom.current = zoomScale;
+      initialPinchZoom.current = zoomScaleRef.current;
       return;
     }
 
-    // B. Ngón tay (touch): luôn kéo canvas — không cần chuyển chế độ
-    if (e.pointerType === 'touch') {
-      isDrawing.current = false;
-      return;
-    }
+    if (e.pointerType === 'touch') { isDrawing.current = false; return; }
+    if (toolRef.current === 'hand' || e.buttons === 4) { isDrawing.current = false; return; }
 
-    // C. Hand tool hoặc chuột giữa: kéo canvas
-    if (tool === 'hand' || e.buttons === 4) {
-      isDrawing.current = false;
-      return;
-    }
-
-    // D. Tẩy (bút hoặc chuột)
-    if (tool === 'eraser') {
-      isDrawing.current = true;
-      hasErasedThisSession.current = false;
-      handleErasing(worldX, worldY);
-      return;
-    }
-
-    // E. Vẽ bằng bút stylus hoặc chuột
+    const t = toolRef.current;
+    if (t !== 'lasso') setSelectedIds(new Set());
     isDrawing.current = true;
-    const pressure = e.pressure !== undefined && e.pressure > 0 ? e.pressure : 0.5;
-    currentPoints.current = [{ x: worldX, y: worldY, p: pressure }];
-    render();
+    hasErased.current = false;
+
+    if (t === 'lasso') {
+      lassoPath.current = [{ x: worldX, y: worldY }];
+    } else if (t === 'line' || t === 'rect' || t === 'circle') {
+      shapeStart.current = { x: worldX, y: worldY };
+      currentPoints.current = [{ x: worldX, y: worldY }];
+    } else if (t === 'eraser') {
+      erase(worldX, worldY);
+    } else {
+      const pressure = e.pressure > 0 ? e.pressure : 0.5;
+      currentPoints.current = [{ x: worldX, y: worldY, p: pressure }];
+    }
+    renderRef.current();
   };
 
-  const handlePointerMove = (e) => {
+  const onPointerMove = (e) => {
     if (!activePointers.current.has(e.pointerId)) return;
-
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const { worldX, worldY } = toWorld(e.clientX, e.clientY);
 
-    const { worldX, worldY } = getCanvasMousePos(e.clientX, e.clientY);
-
-    // A. 2+ ngón tay: pinch zoom + pan
     if (activePointers.current.size >= 2) {
-      const pointerIds = Array.from(activePointers.current.keys());
-      const p1 = activePointers.current.get(pointerIds[0]);
-      const p2 = activePointers.current.get(pointerIds[1]);
-
-      const currentDist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+      const [id1, id2] = Array.from(activePointers.current.keys());
+      const p1 = activePointers.current.get(id1);
+      const p2 = activePointers.current.get(id2);
+      const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
       if (initialPinchDist.current > 0) {
-        const factor = currentDist / initialPinchDist.current;
-        let newZoom = initialPinchZoom.current * factor;
-        newZoom = Math.max(0.2, Math.min(4, newZoom));
-        setZoomScale(newZoom);
+        const nz = Math.max(0.15, Math.min(6, initialPinchZoom.current * (dist / initialPinchDist.current)));
+        setZoomScale(nz);
       }
-
       const dx = e.clientX - lastPointerPos.current.x;
       const dy = e.clientY - lastPointerPos.current.y;
       setOffsetX(prev => prev + dx / 2);
@@ -542,7 +569,6 @@ export default function HandwrittenNotes() {
       return;
     }
 
-    // B. 1 ngón tay: luôn kéo canvas
     if (e.pointerType === 'touch') {
       const dx = e.clientX - lastPointerPos.current.x;
       const dy = e.clientY - lastPointerPos.current.y;
@@ -552,8 +578,7 @@ export default function HandwrittenNotes() {
       return;
     }
 
-    // C. Hand tool hoặc chuột giữa: kéo canvas
-    if (tool === 'hand' || e.buttons === 4) {
+    if (toolRef.current === 'hand' || e.buttons === 4) {
       const dx = e.clientX - lastPointerPos.current.x;
       const dy = e.clientY - lastPointerPos.current.y;
       setOffsetX(prev => prev + dx);
@@ -563,417 +588,389 @@ export default function HandwrittenNotes() {
     }
 
     if (!isDrawing.current) return;
+    const t = toolRef.current;
 
-    if (tool === 'eraser') {
-      handleErasing(worldX, worldY);
+    if (t === 'lasso') {
+      lassoPath.current.push({ x: worldX, y: worldY });
+      renderRef.current();
+    } else if (t === 'line' || t === 'rect' || t === 'circle') {
+      currentPoints.current = [{ x: worldX, y: worldY }];
+      renderRef.current();
+    } else if (t === 'eraser') {
+      erase(worldX, worldY);
     } else {
-      const pressure = e.pressure !== undefined && e.pressure > 0 ? e.pressure : 0.5;
+      const pressure = e.pressure > 0 ? e.pressure : 0.5;
       const pts = currentPoints.current;
       if (pts.length > 0) {
-        const lastPt = pts[pts.length - 1];
-        const dist = Math.hypot(worldX - lastPt.x, worldY - lastPt.y);
-        if (dist < 1.0) return;
+        const last = pts[pts.length - 1];
+        if (Math.hypot(worldX - last.x, worldY - last.y) < 1) return;
       }
       currentPoints.current.push({ x: worldX, y: worldY, p: pressure });
-      render();
+      renderRef.current();
     }
   };
 
-  const handlePointerUp = (e) => {
-    const canvas = canvasRef.current;
-    if (canvas) {
-      canvas.releasePointerCapture(e.pointerId);
-    }
-    
+  const onPointerUp = (e) => {
+    canvasRef.current?.releasePointerCapture(e.pointerId);
     activePointers.current.delete(e.pointerId);
+    if (activePointers.current.size < 2) initialPinchDist.current = 0;
 
-    if (isDrawing.current) {
-      isDrawing.current = false;
-      
-      if (tool === 'eraser') {
-        // Đẩy trạng thái mới sau khi tẩy vào Lịch sử Undo
-        if (hasErasedThisSession.current) {
-          pushToHistory(strokes);
+    if (!isDrawing.current) return;
+    isDrawing.current = false;
+    const t = toolRef.current;
+
+    if (t === 'lasso') {
+      finalizeLasso(lassoPath.current);
+      lassoPath.current = [];
+    } else if (t === 'eraser') {
+      if (hasErased.current) pushHistory(strokesRef.current);
+    } else if (t === 'line' || t === 'rect' || t === 'circle') {
+      if (shapeStart.current && currentPoints.current.length > 0) {
+        const pts = shapeToPoints(t, shapeStart.current, currentPoints.current[0]);
+        if (pts.length > 0) {
+          const ns = { id: Math.random().toString(36).slice(2), type: 'pen', color: colorRef.current, width: lineWidthRef.current, points: pts };
+          const next = [...strokesRef.current, ns];
+          setStrokes(next); pushHistory(next);
         }
-      } else if (currentPoints.current.length > 0) {
-        // Hoàn tất nét vẽ và lưu
-        const newStroke = {
-          id: Math.random().toString(36).substring(2, 9),
-          type: tool,
-          color: color,
-          width: lineWidth,
-          points: [...currentPoints.current]
-        };
-        
-        const nextStrokes = [...strokes, newStroke];
-        setStrokes(nextStrokes);
-        pushToHistory(nextStrokes);
-        currentPoints.current = [];
       }
+      shapeStart.current = null; currentPoints.current = [];
+    } else if (currentPoints.current.length > 0) {
+      const ns = {
+        id: Math.random().toString(36).slice(2),
+        type: t === 'highlighter' ? 'highlighter' : 'pen',
+        color: colorRef.current, width: lineWidthRef.current,
+        points: [...currentPoints.current],
+      };
+      const next = [...strokesRef.current, ns];
+      setStrokes(next); pushHistory(next);
+      currentPoints.current = [];
     }
-    
-    // Reset khoảng cách pinch
-    if (activePointers.current.size < 2) {
-      initialPinchDist.current = 0;
-    }
+    renderRef.current();
   };
 
-  const handlePointerCancel = (e) => {
+  const onPointerCancel = (e) => {
     activePointers.current.delete(e.pointerId);
     isDrawing.current = false;
-    currentPoints.current = [];
+    currentPoints.current = []; lassoPath.current = []; shapeStart.current = null;
   };
 
-
-  // --- 7. Điều khiển Thu phóng nhanh và Reset View ---
-
-  const handleZoom = (direction) => {
-    setZoomScale(prev => {
-      let nextZoom = direction === 'in' ? prev * 1.25 : prev / 1.25;
-      return Math.max(0.2, Math.min(4, nextZoom));
-    });
+  // ── Misc ─────────────────────────────────────────────────────────────
+  const selectPreset = (idx) => {
+    const p = penPresets[idx];
+    setActivePenPreset(idx);
+    setTool(p.type === 'highlighter' ? 'highlighter' : 'pen');
+    setColor(p.color);
+    setLineWidth(p.width);
   };
 
-  const handleResetView = () => {
-    setOffsetX(0);
-    setOffsetY(0);
-    setZoomScale(1);
+  const zoom = (dir) => setZoomScale(prev => Math.max(0.15, Math.min(6, dir === 'in' ? prev * 1.25 : prev / 1.25)));
+  const resetView = () => { setOffsetX(0); setOffsetY(0); setZoomScale(1); };
+
+  const exportPng = () => {
+    const url = canvasRef.current?.toDataURL('image/png');
+    if (!url) return;
+    const a = document.createElement('a');
+    a.href = url; a.download = `${noteTitle || 'ghi-chu'}.png`; a.click();
   };
 
+  const isPenActive = tool === 'pen' || tool === 'highlighter';
 
+  const getCursor = () => {
+    if (tool === 'hand') return 'grab';
+    if (tool === 'eraser') return 'cell';
+    if (tool === 'lasso') return 'crosshair';
+    return 'crosshair';
+  };
+
+  // ── JSX ──────────────────────────────────────────────────────────────
   return (
-    <div ref={containerRef} className="relative w-full h-full overflow-hidden flex" style={{ background: '#121212' }}>
-      
-      {/* SIDEBAR: Quản lý danh sách ghi chú (Toggled) */}
-      {isSidebarOpen && (
-        <div 
-          className="h-full border-r border-white/10 flex flex-col z-20 transition-all duration-300"
-          style={{ 
-            width: '280px', 
-            background: 'rgba(18, 18, 18, 0.95)',
-            backdropFilter: 'blur(10px)',
-            flexShrink: 0
-          }}
-        >
-          <div className="p-4 border-b border-white/10 flex items-center justify-between">
-            <h3 className="text-white font-bold text-sm tracking-wider uppercase flex items-center gap-2">
-              <FolderOpen size={16} className="text-amber-500" /> Bản phác thảo
-            </h3>
-            <button 
-              onClick={() => setIsSidebarOpen(false)}
-              className="text-gray-400 hover:text-white p-1 rounded-md hover:bg-white/5 cursor-pointer"
-            >
-              <ChevronLeft size={16} />
+    <div style={{ display: 'flex', height: '100%', width: '100%', overflow: 'hidden', fontFamily: 'system-ui,-apple-system,sans-serif' }}>
+
+      {/* ── SIDEBAR ── */}
+      <div style={{
+        width: isSidebarOpen ? '240px' : '0px',
+        transition: 'width 0.22s ease',
+        overflow: 'hidden', flexShrink: 0,
+        background: '#fff', borderRight: '1px solid #e8e8e8',
+        display: 'flex', flexDirection: 'column',
+      }}>
+        <div style={{ width: '240px', height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '12px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontWeight: 700, fontSize: '0.75rem', color: '#5c33c1', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Ghi chú</span>
+            <button onClick={() => setIsSidebarOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#aaa', padding: '4px', borderRadius: '4px' }}>
+              <ChevronLeft size={15} />
             </button>
           </div>
-
-          {/* Nút Tạo ghi chú mới */}
-          <div className="p-3">
-            <button 
-              onClick={handleCreateNewNote}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg py-2.5 px-4 font-semibold text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 transition-all cursor-pointer"
-            >
-              <Plus size={14} /> Tạo Ghi chú mới
+          <div style={{ padding: '8px' }}>
+            <button onClick={createNote} style={{
+              width: '100%', padding: '7px 12px', background: '#5c33c1', color: '#fff',
+              border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.76rem',
+              fontWeight: 600, display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center',
+            }}>
+              <Plus size={13} /> Tạo mới
             </button>
           </div>
-
-          {/* Danh sách Ghi chú */}
-          <div className="flex-1 overflow-y-auto px-2 space-y-1">
+          <div style={{ flex: 1, overflowY: 'auto', padding: '2px 8px' }}>
             {notes.map(note => {
-              const isSelected = note.id === currentNoteId;
+              const active = note.id === currentNoteId;
               return (
-                <div
-                  key={note.id}
-                  onClick={() => loadNote(note)}
-                  className={`group flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all ${
-                    isSelected 
-                      ? 'bg-indigo-600/15 border border-indigo-500/30 text-white' 
-                      : 'text-gray-400 hover:text-gray-200 hover:bg-white/5 border border-transparent'
-                  }`}
-                >
-                  <div className="flex-1 min-w-0 pr-2">
-                    <p className={`text-xs font-semibold truncate ${isSelected ? 'text-indigo-400' : 'text-gray-200'}`}>
-                      {note.title}
-                    </p>
-                    <p className="text-[10px] text-gray-500 mt-1">
-                      {new Date(note.updatedAt).toLocaleDateString('vi-VN')} {new Date(note.updatedAt).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}
-                    </p>
+                <div key={note.id} onClick={() => openNote(note)} style={{
+                  padding: '8px 10px', borderRadius: '6px', cursor: 'pointer', marginBottom: '2px',
+                  background: active ? '#ede9fb' : 'transparent',
+                  borderLeft: `3px solid ${active ? '#5c33c1' : 'transparent'}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: active ? 600 : 400, color: active ? '#5c33c1' : '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{note.title}</p>
+                    <p style={{ margin: '2px 0 0', fontSize: '0.65rem', color: '#bbb' }}>{new Date(note.updatedAt).toLocaleDateString('vi-VN')}</p>
                   </div>
-                  
-                  {/* Nút xóa ẩn đi, hiện khi hover */}
-                  <button
-                    onClick={(e) => handleDeleteNote(note.id, e)}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-gray-500 hover:text-red-400 hover:bg-white/5 rounded transition-all cursor-pointer"
-                  >
+                  <button onClick={(e) => deleteNote(note.id, e)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#ddd', padding: '2px', borderRadius: '4px', flexShrink: 0 }}
+                    onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+                    onMouseLeave={e => e.currentTarget.style.color = '#ddd'}>
                     <Trash2 size={12} />
                   </button>
                 </div>
               );
             })}
           </div>
-
-          <div className="p-3 border-t border-white/10 text-center">
-            <span className="text-[10px] text-gray-500">TimeFlow Infinite Sketchpad</span>
-          </div>
         </div>
-      )}
-
-      {/* Nút để mở lại Sidebar khi bị ẩn */}
-      {!isSidebarOpen && (
-        <button
-          onClick={() => setIsSidebarOpen(true)}
-          className="absolute left-4 top-4 z-30 bg-[#1e1e1e]/85 hover:bg-[#2e2e2e] border border-white/10 text-gray-300 hover:text-white p-2.5 rounded-lg shadow-lg backdrop-blur-md transition-all cursor-pointer"
-        >
-          <Menu size={16} />
-        </button>
-      )}
-
-      {/* MAIN CANVAS CONTAINER */}
-      <div className="flex-1 h-full relative flex flex-col">
-        
-        {/* TOP FLOATING TOOLBAR: Glassmorphism bar */}
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 w-[92%] max-w-4xl">
-          <div 
-            className="flex items-center justify-between px-4 py-2.5 rounded-xl border border-white/10 shadow-2xl backdrop-blur-xl transition-all"
-            style={{ background: 'rgba(26, 26, 26, 0.75)' }}
-          >
-            {/* Cánh trái: Tiêu đề sửa đổi được */}
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
-                <Edit3 size={14} className="text-indigo-400 shrink-0" />
-                {isEditingTitle ? (
-                  <input
-                    type="text"
-                    value={titleInput}
-                    onChange={(e) => setTitleInput(e.target.value)}
-                    onBlur={handleRenameNote}
-                    onKeyDown={(e) => e.key === 'Enter' && handleRenameNote()}
-                    autoFocus
-                    className="bg-white/5 border border-indigo-500/50 rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold w-40 md:w-56"
-                  />
-                ) : (
-                  <span 
-                    onClick={() => setIsEditingTitle(true)}
-                    className="text-xs md:text-sm font-bold text-gray-100 hover:text-white cursor-pointer select-none truncate hover:underline"
-                  >
-                    {noteTitle}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Cánh phải: Undo/Redo & Save */}
-            <div className="flex items-center gap-1 md:gap-2">
-              <button
-                onClick={handleUndo}
-                disabled={historyIndex <= 0}
-                className={`p-1.5 md:p-2 rounded-lg transition-all ${
-                  historyIndex > 0 
-                    ? 'text-gray-300 hover:bg-white/5 hover:text-white cursor-pointer' 
-                    : 'text-gray-600 cursor-not-allowed'
-                }`}
-                title="Undo (Ctrl+Z)"
-              >
-                <Undo2 size={15} />
-              </button>
-              
-              <button
-                onClick={handleRedo}
-                disabled={historyIndex >= history.length - 1}
-                className={`p-1.5 md:p-2 rounded-lg transition-all ${
-                  historyIndex < history.length - 1 
-                    ? 'text-gray-300 hover:bg-white/5 hover:text-white cursor-pointer' 
-                    : 'text-gray-600 cursor-not-allowed'
-                }`}
-                title="Redo (Ctrl+Y)"
-              >
-                <Redo2 size={15} />
-              </button>
-
-              <div className="h-4 w-px bg-white/10 mx-1" />
-
-              <button
-                onClick={handleSaveNote}
-                className="bg-white/10 hover:bg-white/15 border border-white/5 text-gray-200 hover:text-white rounded-lg py-1.5 px-3 md:px-4 font-semibold text-xs flex items-center gap-1.5 transition-all shadow-lg hover:shadow-white/5 cursor-pointer"
-              >
-                {saveStatus === 'saving' ? (
-                  <span className="h-3 w-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-                ) : saveStatus === 'saved' ? (
-                  <Check size={13} className="text-green-400 animate-bounce" />
-                ) : (
-                  <Save size={13} />
-                )}
-                <span className="hidden sm:inline">
-                  {saveStatus === 'saving' ? 'Đang lưu...' : saveStatus === 'saved' ? 'Đã lưu' : 'Lưu & Đồng bộ'}
-                </span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* CANVAS GRAPHICS AREA */}
-        <canvas
-          ref={canvasRef}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerCancel}
-          style={{ touchAction: 'none', display: 'block' }}
-          className="flex-1 cursor-crosshair"
-        />
-
-        {/* WIDGET ZOOM (GÓC DƯỚI BÊN PHẢI) */}
-        <div className="absolute bottom-24 md:bottom-6 right-4 z-30 flex items-center gap-1 bg-[#1e1e1e]/85 border border-white/10 rounded-lg p-1 shadow-2xl backdrop-blur-md">
-          <button
-            onClick={() => handleZoom('out')}
-            className="text-gray-400 hover:text-white p-1 rounded hover:bg-white/5 cursor-pointer"
-            title="Thu nhỏ"
-          >
-            <ZoomOut size={14} />
-          </button>
-          
-          <span 
-            onClick={handleResetView}
-            className="text-[10px] md:text-xs text-gray-400 hover:text-white font-mono font-semibold px-2 cursor-pointer select-none"
-            title="Reset tỷ lệ & vị trí"
-          >
-            {Math.round(zoomScale * 100)}%
-          </span>
-
-          <button
-            onClick={() => handleZoom('in')}
-            className="text-gray-400 hover:text-white p-1 rounded hover:bg-white/5 cursor-pointer"
-            title="Phóng to"
-          >
-            <ZoomIn size={14} />
-          </button>
-
-          <button
-            onClick={handleResetView}
-            className="text-gray-400 hover:text-white p-1 rounded hover:bg-white/5 cursor-pointer ml-0.5 border-l border-white/10 pl-1.5"
-            title="Về tọa độ trung tâm (0,0)"
-          >
-            <Maximize2 size={12} />
-          </button>
-        </div>
-
-        {/* BOTTOM FLOATING DOCK: Tool & Palette Selector */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 w-[92%] max-w-xl">
-          <div 
-            className="flex flex-col md:flex-row md:items-center justify-between p-3 rounded-2xl border border-white/10 shadow-2xl backdrop-blur-xl gap-3"
-            style={{ background: 'rgba(26, 26, 26, 0.75)' }}
-          >
-            
-            {/* Trái: Chọn Brush Type (Bút mực, Bút dạ quang, Tẩy, Bàn tay) */}
-            <div className="flex items-center justify-around md:justify-start gap-1">
-              <button
-                onClick={() => setTool('pen')}
-                className={`p-2 rounded-xl transition-all cursor-pointer ${
-                  tool === 'pen'
-                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 scale-110'
-                    : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
-                }`}
-                title="Bút vẽ mực mượt"
-              >
-                <PenTool size={16} />
-              </button>
-              
-              <button
-                onClick={() => setTool('highlighter')}
-                className={`p-2 rounded-xl transition-all cursor-pointer ${
-                  tool === 'highlighter'
-                    ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30 scale-110'
-                    : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
-                }`}
-                title="Bút dạ quang đánh dấu"
-              >
-                <Highlighter size={16} />
-              </button>
-
-              <button
-                onClick={() => setTool('eraser')}
-                className={`p-2 rounded-xl transition-all cursor-pointer ${
-                  tool === 'eraser'
-                    ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30 scale-110'
-                    : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
-                }`}
-                title="Tẩy nét vẽ nhanh"
-              >
-                <Eraser size={16} />
-              </button>
-
-              <button
-                onClick={() => setTool('hand')}
-                className={`p-2 rounded-xl transition-all cursor-pointer ${
-                  tool === 'hand'
-                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30 scale-110'
-                    : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
-                }`}
-                title="Bàn tay di chuyển khung vẽ"
-              >
-                <Hand size={16} />
-              </button>
-            </div>
-
-            {/* Giữa: Thanh kéo kích cỡ nét vẽ */}
-            <div className="flex items-center gap-2.5 px-1 flex-1">
-              <span className="text-[10px] text-gray-500 font-bold tracking-wider shrink-0 uppercase">Size</span>
-              <input
-                type="range"
-                min="1"
-                max="10"
-                step="0.5"
-                value={lineWidth}
-                onChange={(e) => setLineWidth(parseFloat(e.target.value))}
-                className="flex-1 accent-indigo-500 h-1 rounded-lg bg-white/10 appearance-none cursor-pointer"
-              />
-              
-              {/* Dynamic Live Preview Dot */}
-              <div className="w-6 h-6 flex items-center justify-center bg-white/5 rounded-md border border-white/5 shrink-0">
-                <div 
-                  className="rounded-full transition-all"
-                  style={{
-                    width: `${lineWidth * 1.8}px`,
-                    height: `${lineWidth * 1.8}px`,
-                    background: tool === 'eraser' ? '#ff3b30' : tool === 'hand' ? '#10b981' : color,
-                    opacity: tool === 'highlighter' ? 0.5 : 1
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Phải: Bảng màu chấm tròn (Ẩn khi chọn tẩy/bàn tay) */}
-            {tool !== 'eraser' && tool !== 'hand' && (
-              <div className="flex items-center justify-center gap-2 border-t md:border-t-0 md:border-l border-white/10 pt-2.5 md:pt-0 md:pl-3">
-                {premiumColors.map(c => {
-                  const isSelected = color === c.value;
-                  return (
-                    <button
-                      key={c.name}
-                      onClick={() => setColor(c.value)}
-                      className="relative p-0.5 rounded-full transition-all hover:scale-110 active:scale-95 cursor-pointer"
-                    >
-                      <div 
-                        className="w-4 h-4 rounded-full border border-white/20"
-                        style={{ background: c.value }}
-                      />
-                      {isSelected && (
-                        <div 
-                          className="absolute inset-0 rounded-full border-2 border-indigo-400 animate-ping opacity-60"
-                          style={{ borderColor: c.value }}
-                        />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-          </div>
-        </div>
-
       </div>
 
+      {/* ── MAIN ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+
+        {/* Title bar */}
+        <div style={{ background: '#fff', borderBottom: '1px solid #e8e8e8', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+          <button onClick={() => setIsSidebarOpen(v => !v)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#666', padding: '5px', borderRadius: '5px' }}>
+            <Menu size={17} />
+          </button>
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {isEditingTitle ? (
+              <input value={titleInput} onChange={e => setTitleInput(e.target.value)}
+                onBlur={renameNote} onKeyDown={e => e.key === 'Enter' && renameNote()}
+                autoFocus style={{ border: '1px solid #5c33c1', borderRadius: '4px', padding: '3px 8px', fontSize: '0.88rem', fontWeight: 600, outline: 'none', maxWidth: '280px', width: '100%' }} />
+            ) : (
+              <span onClick={() => setIsEditingTitle(true)} style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1a1a1a', cursor: 'text', padding: '3px 4px', borderRadius: '4px' }}>
+                {noteTitle || 'Ghi chú mới'}
+              </span>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+            <button onClick={undo} disabled={historyIndex <= 0} title="Undo (Ctrl+Z)" style={{ border: 'none', background: 'none', padding: '5px', borderRadius: '5px', cursor: historyIndex > 0 ? 'pointer' : 'default', color: historyIndex > 0 ? '#555' : '#d1d5db' }}>
+              <Undo2 size={16} />
+            </button>
+            <button onClick={redo} disabled={historyIndex >= history.length - 1} title="Redo (Ctrl+Y)" style={{ border: 'none', background: 'none', padding: '5px', borderRadius: '5px', cursor: historyIndex < history.length - 1 ? 'pointer' : 'default', color: historyIndex < history.length - 1 ? '#555' : '#d1d5db' }}>
+              <Redo2 size={16} />
+            </button>
+            <div style={{ width: '1px', height: '18px', background: '#e8e8e8', margin: '0 4px' }} />
+            <button onClick={exportPng} title="Tải về PNG" style={{ border: 'none', background: 'none', padding: '5px', borderRadius: '5px', cursor: 'pointer', color: '#555' }}>
+              <Download size={16} />
+            </button>
+            <button onClick={() => save()} style={{
+              border: 'none', background: '#5c33c1', color: '#fff', padding: '5px 12px',
+              borderRadius: '6px', cursor: 'pointer', fontSize: '0.76rem', fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: '4px',
+            }}>
+              {saveStatus === 'saving'
+                ? <span style={{ width: 12, height: 12, border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'hn-spin 0.6s linear infinite' }} />
+                : saveStatus === 'saved' ? <Check size={13} /> : <Save size={13} />}
+              <span>{saveStatus === 'saved' ? 'Đã lưu' : 'Lưu'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Tool ribbon */}
+        <div style={{
+          background: '#fff', borderBottom: '1px solid #e8e8e8',
+          padding: '5px 10px', display: 'flex', alignItems: 'center', gap: '2px',
+          flexShrink: 0, overflowX: 'auto',
+        }}>
+          {/* Select + Hand */}
+          <ToolBtn active={tool === 'lasso'} onClick={() => setTool('lasso')} title="Lasso chọn vùng">
+            <MousePointer2 size={15} />
+          </ToolBtn>
+          <ToolBtn active={tool === 'hand'} onClick={() => setTool('hand')} title="Di chuyển canvas">
+            <span style={{ fontSize: '13px', lineHeight: 1 }}>✋</span>
+          </ToolBtn>
+
+          <Sep />
+
+          {/* Pen presets */}
+          {penPresets.map((preset, idx) => {
+            const isActive = activePenPreset === idx && isPenActive;
+            return (
+              <button key={idx} onClick={() => selectPreset(idx)} title={preset.label} style={{
+                border: `2px solid ${isActive ? '#5c33c1' : 'transparent'}`,
+                background: isActive ? '#ede9fb' : 'transparent',
+                borderRadius: '8px', padding: '3px 5px', cursor: 'pointer',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px',
+                flexShrink: 0, transition: 'all 0.12s',
+              }}>
+                <svg width="32" height="18" viewBox="0 0 32 18" style={{ display: 'block' }}>
+                  {preset.type === 'highlighter'
+                    ? <path d="M2 13 Q16 9 30 13" stroke={preset.color} strokeWidth="8" strokeLinecap="round" fill="none" opacity="0.5" />
+                    : <path d="M2 15 Q12 3 30 7" stroke={preset.color} strokeWidth={Math.min(preset.width * 1.4, 5)} strokeLinecap="round" fill="none" />
+                  }
+                </svg>
+                <span style={{ fontSize: '0.55rem', color: '#999', lineHeight: 1 }}>{preset.label}</span>
+              </button>
+            );
+          })}
+
+          <Sep />
+
+          {/* Eraser */}
+          <ToolBtn active={tool === 'eraser'} onClick={() => setTool('eraser')} title="Tẩy nét">
+            <Eraser size={15} />
+          </ToolBtn>
+
+          <Sep />
+
+          {/* Shapes */}
+          <ToolBtn active={tool === 'line'} onClick={() => setTool('line')} title="Đường thẳng">
+            <Minus size={15} />
+          </ToolBtn>
+          <ToolBtn active={tool === 'rect'} onClick={() => setTool('rect')} title="Hình chữ nhật">
+            <Square size={15} />
+          </ToolBtn>
+          <ToolBtn active={tool === 'circle'} onClick={() => setTool('circle')} title="Hình tròn / Oval">
+            <CircleIcon size={15} />
+          </ToolBtn>
+
+          <Sep />
+
+          {/* Color picker */}
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <button onClick={(e) => { e.stopPropagation(); setShowColorPicker(v => !v); setShowBgPicker(false); }} style={{
+              border: '1px solid #e8e8e8', borderRadius: '6px', padding: '5px 8px',
+              cursor: 'pointer', background: '#fff', display: 'flex', alignItems: 'center', gap: '5px',
+            }}>
+              <div style={{ width: '16px', height: '16px', borderRadius: '50%', background: color, border: '1px solid #ddd', flexShrink: 0 }} />
+              <span style={{ fontSize: '0.72rem', color: '#555' }}>Màu</span>
+            </button>
+            {showColorPicker && (
+              <div onClick={e => e.stopPropagation()} style={{
+                position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 200,
+                background: '#fff', border: '1px solid #e8e8e8', borderRadius: '10px',
+                padding: '10px', boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+                display: 'grid', gridTemplateColumns: 'repeat(7, 26px)', gap: '5px',
+              }}>
+                {COLORS.map(c => (
+                  <button key={c} onClick={() => { setColor(c); setShowColorPicker(false); }} style={{
+                    width: '26px', height: '26px', borderRadius: '50%', padding: 0, cursor: 'pointer',
+                    background: c, border: color === c ? '2.5px solid #5c33c1' : '1px solid #ddd',
+                  }} />
+                ))}
+                <div style={{ gridColumn: '1/-1', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '0.68rem', color: '#999' }}>Tùy chọn</span>
+                  <input type="color" value={color} onChange={e => setColor(e.target.value)} style={{ width: '30px', height: '24px', border: 'none', cursor: 'pointer', padding: 0, background: 'none' }} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Size */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '0 4px', flexShrink: 0 }}>
+            <span style={{ fontSize: '0.7rem', color: '#aaa', whiteSpace: 'nowrap' }}>Cỡ</span>
+            <input type="range" min="1" max="20" step="0.5" value={lineWidth}
+              onChange={e => setLineWidth(parseFloat(e.target.value))}
+              style={{ width: '72px', accentColor: '#5c33c1', cursor: 'pointer' }} />
+            <div style={{
+              width: `${Math.max(4, lineWidth * 1.6)}px`, height: `${Math.max(4, lineWidth * 1.6)}px`,
+              borderRadius: '50%', background: color, border: '1px solid #ddd', flexShrink: 0,
+              maxWidth: '20px', maxHeight: '20px',
+            }} />
+          </div>
+
+          <Sep />
+
+          {/* Background */}
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <button onClick={(e) => { e.stopPropagation(); setShowBgPicker(v => !v); setShowColorPicker(false); }} style={{
+              border: '1px solid #e8e8e8', borderRadius: '6px', padding: '5px 9px',
+              cursor: 'pointer', background: '#fff', fontSize: '0.72rem', color: '#555', whiteSpace: 'nowrap',
+            }}>
+              Nền ▾
+            </button>
+            {showBgPicker && (
+              <div onClick={e => e.stopPropagation()} style={{
+                position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 200,
+                background: '#fff', border: '1px solid #e8e8e8', borderRadius: '8px',
+                padding: '6px', boxShadow: '0 8px 24px rgba(0,0,0,0.1)', minWidth: '110px',
+              }}>
+                {[['blank','Trắng'],['dots','Chấm bi'],['lines','Dòng kẻ'],['grid','Lưới ô']].map(([val, label]) => (
+                  <button key={val} onClick={() => { setBackground(val); setShowBgPicker(false); }} style={{
+                    width: '100%', padding: '6px 10px', border: 'none', textAlign: 'left',
+                    background: background === val ? '#ede9fb' : 'transparent',
+                    color: background === val ? '#5c33c1' : '#333',
+                    borderRadius: '5px', cursor: 'pointer', fontSize: '0.76rem', fontWeight: background === val ? 600 : 400,
+                    display: 'block',
+                  }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Delete selection */}
+          {selectedIds.size > 0 && (
+            <>
+              <Sep />
+              <button onClick={deleteSelected} style={{
+                border: 'none', background: '#fef2f2', color: '#dc2626', padding: '5px 10px',
+                borderRadius: '6px', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 600,
+                display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0,
+              }}>
+                <Trash2 size={13} /> Xóa {selectedIds.size} nét
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Canvas area */}
+        <div ref={containerRef} style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#FEFDF8' }}>
+          <canvas
+            ref={canvasRef}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerCancel}
+            style={{ display: 'block', touchAction: 'none', cursor: getCursor() }}
+          />
+
+          {/* Zoom widget */}
+          <div style={{
+            position: 'absolute', bottom: '16px', right: '16px', zIndex: 10,
+            display: 'flex', alignItems: 'center',
+            background: '#fff', border: '1px solid #e8e8e8', borderRadius: '8px',
+            padding: '3px', boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+          }}>
+            <button onClick={() => zoom('out')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#666', padding: '4px 5px', borderRadius: '5px' }}>
+              <ZoomOut size={14} />
+            </button>
+            <span onClick={resetView} style={{ fontSize: '0.72rem', color: '#555', fontWeight: 600, padding: '0 6px', cursor: 'pointer', fontVariantNumeric: 'tabular-nums', minWidth: '42px', textAlign: 'center' }}>
+              {Math.round(zoomScale * 100)}%
+            </span>
+            <button onClick={() => zoom('in')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#666', padding: '4px 5px', borderRadius: '5px' }}>
+              <ZoomIn size={14} />
+            </button>
+            <div style={{ width: '1px', height: '14px', background: '#e8e8e8', margin: '0 2px' }} />
+            <button onClick={resetView} title="Reset view" style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#666', padding: '4px 5px', borderRadius: '5px' }}>
+              <Maximize2 size={12} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes hn-spin { to { transform: rotate(360deg); } }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+      `}</style>
     </div>
   );
 }
