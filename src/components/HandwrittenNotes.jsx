@@ -3,7 +3,7 @@ import {
   Undo2, Redo2, Save, Plus, Trash2,
   Eraser, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2,
   Check, Menu, MousePointer2, Minus, Square, Download,
-  Circle as CircleIcon, ChevronDown, BookOpen, Pencil, X, Sparkles,
+  Circle as CircleIcon, ChevronDown, BookOpen, Pencil, X, Sparkles, PenLine,
 } from 'lucide-react';
 import { notesDb } from '../utils/notesDb';
 
@@ -101,32 +101,43 @@ function smartRecognize(rawPts) {
   const isClosed = closeDist < diag * 0.38;
 
   if (isClosed) {
-    // ── Method 1: RDP corner count ────────────────────────────────────────
-    // Squares/rects have 3-4 sharp corners; circles have none
-    const simp = rdp(pts, diag * 0.055);
-    let sharpCorners = 0;
-    for (let i = 1; i < simp.length - 1; i++) {
-      const p0 = simp[i - 1], p1 = simp[i], p2 = simp[i + 1];
-      const a1 = Math.atan2(p1.y - p0.y, p1.x - p0.x);
-      const a2 = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-      // Angle change at this point
-      const da = Math.abs(((a2 - a1 + 3 * Math.PI) % (2 * Math.PI)) - Math.PI);
-      if (da > 0.45) sharpCorners++; // ~26° threshold
+    // ── Method 1: Bounding-box fill ratio ────────────────────────────────
+    // A circle inscribed in its bbox fills π/4 ≈ 78.5% of area.
+    // A rectangle fills ~100%. Threshold 0.87 separates them cleanly.
+    // NOTE: RDP-based corner counting is NOT used here because a circle
+    // simplified to 4 quadrant-points gets the same ~90° angles as a rect.
+    let shoelace = 0;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      shoelace += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+    }
+    const strokeArea = Math.abs(shoelace) / 2;
+    const bboxFill = strokeArea / (W * H);
+
+    // ── Method 2: Local curvature corner count ───────────────────────────
+    // Sum turning angles in a sliding window; peaks > 1.1 rad = real corner.
+    // Circle: ~4.5°/step → window sum ~50° < 63° → 0 corners.
+    // Square corner: ~90° over a few steps → window > 63° → detected.
+    const turns = [];
+    for (let i = 1; i < n - 1; i++) {
+      const a1 = Math.atan2(pts[i].y - pts[i - 1].y, pts[i].x - pts[i - 1].x);
+      const a2 = Math.atan2(pts[i + 1].y - pts[i].y, pts[i + 1].x - pts[i].x);
+      turns.push(Math.abs(((a2 - a1 + 3 * Math.PI) % (2 * Math.PI)) - Math.PI));
+    }
+    const WIN = 5;
+    let corners = 0, lastC = -WIN * 3;
+    for (let i = WIN; i < turns.length - WIN; i++) {
+      let sum = 0;
+      for (let k = i - WIN; k <= i + WIN; k++) sum += turns[k];
+      if (sum > 1.1 && i - lastC > Math.max(8, Math.floor(n / 6))) {
+        corners++;
+        lastC = i;
+      }
     }
 
-    // ── Method 2: Centroid distance ratio ─────────────────────────────────
-    // Circle: all points same distance from center → ratio ≈ 1.0
-    // Square: corners farther than edges → ratio ≈ √2 ≈ 1.41
-    const dists = pts.map(p => Math.hypot(p.x - cx, p.y - cy)).sort((a, b) => a - b);
-    const lo = dists[Math.floor(n * 0.05)] || dists[0];
-    const hi = dists[Math.floor(n * 0.95)] || dists[n - 1];
-    const ratio = lo > 0.5 ? hi / lo : 10;
-
-    // Rectangle/square: sharp corners detected OR large distance variation
-    if (sharpCorners >= 3 || ratio > 1.30) {
+    if (bboxFill > 0.87 || corners >= 3) {
       return { type: 'rect', x: minX, y: minY, w: W, h: H, label: 'Hình chữ nhật' };
     }
-    // Circle/ellipse: smooth curve, uniform distances
     return { type: 'circle', cx, cy, rx: W / 2, ry: H / 2, label: 'Hình tròn / Elip' };
   }
 
@@ -1184,6 +1195,7 @@ export default function HandwrittenNotes() {
             <ChevronDown size={10} style={{ color: isPenActive ? '#5c33c1' : '#999' }} />
           </button>
 
+          <ToolBtn active={isPenActive} onClick={() => setTool(DEFAULT_PRESETS[activePenPreset].type === 'highlighter' ? 'highlighter' : 'pen')} title="Quay lại chế độ bút"><PenLine size={14} /></ToolBtn>
           <ToolBtn active={tool === 'eraser'} onClick={() => setTool('eraser')} title="Tẩy"><Eraser size={14} /></ToolBtn>
           <Sep />
 
