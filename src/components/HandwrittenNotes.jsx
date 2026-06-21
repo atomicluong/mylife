@@ -788,7 +788,7 @@ export default function HandwrittenNotes() {
     inSmartPreview.current = true;
     smartPreviewShape.current = shape;
     drawSmartPreview(shape);
-    setSmartToast(shape);
+    setSmartToast({ ...shape, holdMode: true });
   };
 
   // ── Pointer events ─────────────────────────────────────────────────────────
@@ -861,18 +861,22 @@ export default function HandwrittenNotes() {
     else if (t === 'line' || t === 'rect' || t === 'circle') { currentPoints.current = [{ x: worldX, y: worldY }]; drawLivePreview(); }
     else if (t === 'eraser') { erase(worldX, worldY); }
     else {
-      // Cancel preview if pen moved again
-      if (inSmartPreview.current) cancelSmartPreview();
       const pressure = e.pressure > 0 ? e.pressure : 0.5;
       const pts = currentPoints.current;
       if (pts.length > 0) {
         const last = pts[pts.length - 1];
-        if (Math.hypot(worldX - last.x, worldY - last.y) < 0.5) return;
+        const moved = Math.hypot(worldX - last.x, worldY - last.y);
+        if (moved < 0.5) return; // ignore micro-jitter
+
+        if (inSmartPreview.current) {
+          if (moved > 5) cancelSmartPreview(); // significant move → cancel preview
+          else return;                          // small jitter in preview → ignore
+        }
         appendLiveSegment(last, { x: worldX, y: worldY, p: pressure });
       }
       currentPoints.current.push({ x: worldX, y: worldY, p: pressure });
-      // Restart hold timer — fires 900ms after pen stops moving
-      if (smartModeRef.current) {
+      // Hold timer: fires 900ms after pen truly stops (natural debounce)
+      if (smartModeRef.current && !inSmartPreview.current) {
         clearTimeout(shapeHoldTimer.current);
         shapeHoldTimer.current = setTimeout(attemptSmartShape, 900);
       }
@@ -901,18 +905,35 @@ export default function HandwrittenNotes() {
       shapeStart.current = null; currentPoints.current = [];
     } else if (currentPoints.current.length > 0) {
       clearTimeout(shapeHoldTimer.current);
-      if (inSmartPreview.current && smartPreviewShape.current) {
-        // Pen lifted while smart preview active → commit clean shape
-        commitSmartShape(smartPreviewShape.current);
-      } else {
-        inSmartPreview.current = false;
-        smartPreviewShape.current = null;
-        setSmartToast(null);
-        const ns = { id: Math.random().toString(36).slice(2), type: t === 'highlighter' ? 'highlighter' : 'pen', color: colorRef.current, width: lwRef.current, points: [...currentPoints.current] };
-        const next = [...strokesRef.current, ns];
-        setStrokes(next); pushHistory(next);
-        currentPoints.current = [];
+
+      // ── Smart shape: commit held preview OR try lift-to-snap ──────────────
+      if (smartModeRef.current && t !== 'highlighter') {
+        // If hold-preview already active → commit it
+        if (inSmartPreview.current && smartPreviewShape.current) {
+          commitSmartShape(smartPreviewShape.current);
+          return;
+        }
+        // Lift-to-snap: try recognition on every pen-up
+        if (currentPoints.current.length >= 6) {
+          const shape = smartRecognize(currentPoints.current);
+          if (shape) {
+            // Show toast briefly then commit
+            setSmartToast(shape);
+            setTimeout(() => setSmartToast(null), 1600);
+            commitSmartShape(shape);
+            return;
+          }
+        }
       }
+
+      // Regular stroke commit
+      inSmartPreview.current = false;
+      smartPreviewShape.current = null;
+      setSmartToast(null);
+      const ns = { id: Math.random().toString(36).slice(2), type: t === 'highlighter' ? 'highlighter' : 'pen', color: colorRef.current, width: lwRef.current, points: [...currentPoints.current] };
+      const next = [...strokesRef.current, ns];
+      setStrokes(next); pushHistory(next);
+      currentPoints.current = [];
     }
   };
 
@@ -1179,7 +1200,7 @@ export default function HandwrittenNotes() {
             <div style={{ position: 'absolute', top: '12px', left: '50%', transform: 'translateX(-50%)', zIndex: 20, background: '#fff', border: '1.5px solid #7c3aed', borderRadius: '20px', padding: '7px 18px', boxShadow: '0 4px 20px rgba(124,58,237,0.18)', display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap', animation: 'smart-pop 0.18s ease-out', pointerEvents: 'none' }}>
               <Sparkles size={14} style={{ color: '#7c3aed' }} />
               <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#7c3aed' }}>{smartToast.label}</span>
-              <span style={{ fontSize: '0.75rem', color: '#aaa' }}>— nhấc bút để xác nhận</span>
+              <span style={{ fontSize: '0.75rem', color: '#aaa' }}>{smartToast.holdMode ? '— nhấc bút để xác nhận' : '— đã nhận diện!'}</span>
             </div>
           )}
           <canvas ref={committedCanvasRef} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', display: 'block' }} />
