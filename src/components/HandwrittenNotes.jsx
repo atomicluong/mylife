@@ -3,7 +3,7 @@ import {
   Undo2, Redo2, Save, Plus, Trash2,
   Eraser, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2,
   Check, Menu, MousePointer2, Minus, Square, Download,
-  Circle as CircleIcon, ChevronDown, BookOpen, Pencil, X,
+  Circle as CircleIcon, ChevronDown, BookOpen, Pencil, X, Sparkles,
 } from 'lucide-react';
 import { notesDb } from '../utils/notesDb';
 
@@ -45,6 +45,52 @@ const SHAPE_OPTIONS = [
 ];
 
 const SIZE_OPTIONS = [1, 2, 3, 5, 7, 10, 14, 20];
+
+// ── Smart shape recognition (pure functions, no React deps) ──────────────────
+function dsPoints(pts, n) {
+  if (pts.length <= n) return pts;
+  const step = (pts.length - 1) / (n - 1);
+  return Array.from({ length: n }, (_, i) => pts[Math.round(i * step)]);
+}
+function pathStraightness(pts) {
+  const n = pts.length;
+  const d = Math.hypot(pts[n - 1].x - pts[0].x, pts[n - 1].y - pts[0].y);
+  let total = 0;
+  for (let i = 1; i < n; i++) total += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+  return total > 1 ? d / total : 0;
+}
+function smartRecognize(rawPts) {
+  if (rawPts.length < 6) return null;
+  const pts = dsPoints(rawPts, Math.min(rawPts.length, 50));
+  const n = pts.length;
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const W = maxX - minX, H = maxY - minY, diag = Math.hypot(W, H);
+  if (diag < 20) return null;
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  const closeDist = Math.hypot(pts[0].x - pts[n - 1].x, pts[0].y - pts[n - 1].y);
+  const isClosed = closeDist < diag * 0.35;
+
+  if (isClosed) {
+    const dists = pts.map(p => Math.hypot(p.x - cx, p.y - cy));
+    const meanR = dists.reduce((a, b) => a + b) / n;
+    const stdR = Math.sqrt(dists.reduce((s, d) => s + (d - meanR) ** 2, 0) / n);
+    const cv = stdR / meanR;
+    if (cv < 0.22) return { type: 'circle', cx, cy, rx: W / 2, ry: H / 2, label: 'Hình tròn' };
+    if (cv < 0.48) return { type: 'rect', x: minX, y: minY, w: W, h: H, label: 'Hình chữ nhật' };
+  }
+
+  const str = pathStraightness(pts);
+  if (str > 0.82 && diag > 25) {
+    const bodyAngle = Math.atan2(pts[n - 1].y - pts[0].y, pts[n - 1].x - pts[0].x);
+    const backAngle = Math.atan2(pts[Math.floor(n * 0.82)].y - pts[n - 1].y, pts[Math.floor(n * 0.82)].x - pts[n - 1].x);
+    const diff = Math.abs(((bodyAngle - backAngle + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+    if (diff > 0.5 && diff < 2.6) return { type: 'arrow', x1: pts[0].x, y1: pts[0].y, x2: pts[n - 1].x, y2: pts[n - 1].y, label: 'Mũi tên' };
+    return { type: 'line', x1: pts[0].x, y1: pts[0].y, x2: pts[n - 1].x, y2: pts[n - 1].y, label: 'Đường thẳng' };
+  }
+  return null;
+}
 
 const NOTEBOOKS_KEY  = 'hn-notebooks';
 const PEN_KEY        = 'hn-pen-settings';
@@ -107,6 +153,8 @@ export default function HandwrittenNotes() {
   const [selectedIds, setSelectedIds]         = useState(new Set());
   const [saveStatus, setSaveStatus]           = useState('idle');
   const [isSidebarOpen, setIsSidebarOpen]     = useState(false);
+  const [smartMode, setSmartMode]             = useState(false);
+  const [smartToast, setSmartToast]           = useState(null); // { label } when preview active
 
   // Pen settings (localStorage-persisted)
   const _saved = loadPen();
@@ -154,6 +202,12 @@ export default function HandwrittenNotes() {
   const initialPinchZoom = useRef(1);
   const hasErased        = useRef(false);
 
+  // Smart shape refs
+  const smartModeRef      = useRef(false);
+  const shapeHoldTimer    = useRef(null);
+  const inSmartPreview    = useRef(false);
+  const smartPreviewShape = useRef(null);
+
   // Mirror state → refs (stable for pointer event handlers)
   const strokesRef  = useRef(strokes);
   const offsetXRef  = useRef(offsetX);
@@ -178,6 +232,7 @@ export default function HandwrittenNotes() {
   useEffect(() => { selRef.current     = selectedIds; },  [selectedIds]);
   useEffect(() => { histRef.current    = history; },      [history]);
   useEffect(() => { histIdxRef.current = historyIndex; }, [historyIndex]);
+  useEffect(() => { smartModeRef.current = smartMode; }, [smartMode]);
 
   // Persist notebooks
   useEffect(() => { localStorage.setItem(NOTEBOOKS_KEY, JSON.stringify(notebooks)); }, [notebooks]);
@@ -631,6 +686,111 @@ export default function HandwrittenNotes() {
     });
   };
 
+  // ── Smart shape recognition ────────────────────────────────────────────────
+  const drawSmartPreview = (shape) => {
+    const live = liveCanvasRef.current, committed = committedCanvasRef.current;
+    if (!live || !committed) return;
+    const ctx = live.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const W = live.width / dpr, H = live.height / dpr;
+    ctx.clearRect(0, 0, W, H);
+    ctx.drawImage(committed, 0, 0, W, H);
+    ctx.save();
+    ctx.translate(offsetXRef.current, offsetYRef.current);
+    ctx.scale(zoomRef.current, zoomRef.current);
+    // Fade rough sketch
+    ctx.globalAlpha = 0.18;
+    paintStrokes(ctx, [{ type: 'pen', color: colorRef.current, width: lwRef.current, points: currentPoints.current }]);
+    ctx.globalAlpha = 1;
+    // Draw clean shape with glow
+    ctx.strokeStyle = colorRef.current;
+    ctx.lineWidth = lwRef.current;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.setLineDash([]);
+    ctx.shadowColor = '#7c3aed'; ctx.shadowBlur = 10 / zoomRef.current;
+    ctx.beginPath();
+    if (shape.type === 'circle') {
+      ctx.ellipse(shape.cx, shape.cy, shape.rx, shape.ry, 0, 0, Math.PI * 2);
+    } else if (shape.type === 'rect') {
+      ctx.rect(shape.x, shape.y, shape.w, shape.h);
+    } else {
+      ctx.moveTo(shape.x1, shape.y1); ctx.lineTo(shape.x2, shape.y2);
+      if (shape.type === 'arrow') {
+        const ang = Math.atan2(shape.y2 - shape.y1, shape.x2 - shape.x1);
+        const hl = Math.max(14, lwRef.current * 4);
+        ctx.moveTo(shape.x2, shape.y2);
+        ctx.lineTo(shape.x2 - hl * Math.cos(ang - 0.45), shape.y2 - hl * Math.sin(ang - 0.45));
+        ctx.moveTo(shape.x2, shape.y2);
+        ctx.lineTo(shape.x2 - hl * Math.cos(ang + 0.45), shape.y2 - hl * Math.sin(ang + 0.45));
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  const commitSmartShape = (shape) => {
+    let pts;
+    if (shape.type === 'circle') {
+      pts = Array.from({ length: 65 }, (_, i) => {
+        const a = (i / 64) * Math.PI * 2;
+        return { x: shape.cx + shape.rx * Math.cos(a), y: shape.cy + shape.ry * Math.sin(a), p: 0.5 };
+      });
+    } else if (shape.type === 'rect') {
+      pts = [
+        { x: shape.x,           y: shape.y,           p: 0.5 },
+        { x: shape.x + shape.w, y: shape.y,           p: 0.5 },
+        { x: shape.x + shape.w, y: shape.y + shape.h, p: 0.5 },
+        { x: shape.x,           y: shape.y + shape.h, p: 0.5 },
+        { x: shape.x,           y: shape.y,           p: 0.5 },
+      ];
+    } else {
+      pts = [{ x: shape.x1, y: shape.y1, p: 0.5 }, { x: shape.x2, y: shape.y2, p: 0.5 }];
+      if (shape.type === 'arrow') {
+        const ang = Math.atan2(shape.y2 - shape.y1, shape.x2 - shape.x1);
+        const hl = Math.max(14, lwRef.current * 4);
+        pts.push({ x: shape.x2 - hl * Math.cos(ang - 0.45), y: shape.y2 - hl * Math.sin(ang - 0.45), p: 0.5 });
+        pts.push({ x: shape.x2, y: shape.y2, p: 0.5 });
+        pts.push({ x: shape.x2 - hl * Math.cos(ang + 0.45), y: shape.y2 - hl * Math.sin(ang + 0.45), p: 0.5 });
+      }
+    }
+    const ns = { id: Math.random().toString(36).slice(2), type: 'pen', color: colorRef.current, width: lwRef.current, points: pts };
+    const next = [...strokesRef.current, ns];
+    setStrokes(next); pushHistory(next);
+    currentPoints.current = [];
+    inSmartPreview.current = false;
+    smartPreviewShape.current = null;
+    setSmartToast(null);
+  };
+
+  const cancelSmartPreview = () => {
+    inSmartPreview.current = false;
+    smartPreviewShape.current = null;
+    setSmartToast(null);
+    // Redraw current stroke (without preview overlay)
+    const live = liveCanvasRef.current;
+    if (!live) return;
+    const ctx = live.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    ctx.clearRect(0, 0, live.width / dpr, live.height / dpr);
+    if (currentPoints.current.length > 1) {
+      ctx.save();
+      ctx.translate(offsetXRef.current, offsetYRef.current);
+      ctx.scale(zoomRef.current, zoomRef.current);
+      paintStrokes(ctx, [{ type: toolRef.current === 'highlighter' ? 'highlighter' : 'pen', color: colorRef.current, width: lwRef.current, points: currentPoints.current }]);
+      ctx.restore();
+    }
+  };
+
+  const attemptSmartShape = () => {
+    if (!isDrawing.current || !smartModeRef.current || inSmartPreview.current) return;
+    if (currentPoints.current.length < 6) return;
+    const shape = smartRecognize(currentPoints.current);
+    if (!shape) return;
+    inSmartPreview.current = true;
+    smartPreviewShape.current = shape;
+    drawSmartPreview(shape);
+    setSmartToast(shape);
+  };
+
   // ── Pointer events ─────────────────────────────────────────────────────────
   const onPointerDown = (e) => {
     e.preventDefault();
@@ -654,6 +814,11 @@ export default function HandwrittenNotes() {
     const t = toolRef.current;
     if (t !== 'lasso') { selRef.current = new Set(); setSelectedIds(new Set()); }
     isDrawing.current = true; hasErased.current = false;
+    // Reset smart shape state on new stroke
+    clearTimeout(shapeHoldTimer.current);
+    inSmartPreview.current = false;
+    smartPreviewShape.current = null;
+    setSmartToast(null);
 
     if (t === 'lasso') { lassoPath.current = [{ x: worldX, y: worldY }]; }
     else if (t === 'line' || t === 'rect' || t === 'circle') { shapeStart.current = { x: worldX, y: worldY }; currentPoints.current = [{ x: worldX, y: worldY }]; }
@@ -696,6 +861,8 @@ export default function HandwrittenNotes() {
     else if (t === 'line' || t === 'rect' || t === 'circle') { currentPoints.current = [{ x: worldX, y: worldY }]; drawLivePreview(); }
     else if (t === 'eraser') { erase(worldX, worldY); }
     else {
+      // Cancel preview if pen moved again
+      if (inSmartPreview.current) cancelSmartPreview();
       const pressure = e.pressure > 0 ? e.pressure : 0.5;
       const pts = currentPoints.current;
       if (pts.length > 0) {
@@ -704,6 +871,11 @@ export default function HandwrittenNotes() {
         appendLiveSegment(last, { x: worldX, y: worldY, p: pressure });
       }
       currentPoints.current.push({ x: worldX, y: worldY, p: pressure });
+      // Restart hold timer — fires 900ms after pen stops moving
+      if (smartModeRef.current) {
+        clearTimeout(shapeHoldTimer.current);
+        shapeHoldTimer.current = setTimeout(attemptSmartShape, 900);
+      }
     }
   };
 
@@ -728,10 +900,19 @@ export default function HandwrittenNotes() {
       }
       shapeStart.current = null; currentPoints.current = [];
     } else if (currentPoints.current.length > 0) {
-      const ns = { id: Math.random().toString(36).slice(2), type: t === 'highlighter' ? 'highlighter' : 'pen', color: colorRef.current, width: lwRef.current, points: [...currentPoints.current] };
-      const next = [...strokesRef.current, ns];
-      setStrokes(next); pushHistory(next);
-      currentPoints.current = [];
+      clearTimeout(shapeHoldTimer.current);
+      if (inSmartPreview.current && smartPreviewShape.current) {
+        // Pen lifted while smart preview active → commit clean shape
+        commitSmartShape(smartPreviewShape.current);
+      } else {
+        inSmartPreview.current = false;
+        smartPreviewShape.current = null;
+        setSmartToast(null);
+        const ns = { id: Math.random().toString(36).slice(2), type: t === 'highlighter' ? 'highlighter' : 'pen', color: colorRef.current, width: lwRef.current, points: [...currentPoints.current] };
+        const next = [...strokesRef.current, ns];
+        setStrokes(next); pushHistory(next);
+        currentPoints.current = [];
+      }
     }
   };
 
@@ -739,6 +920,8 @@ export default function HandwrittenNotes() {
     activePointers.current.delete(e.pointerId);
     isDrawing.current = false;
     currentPoints.current = []; lassoPath.current = []; shapeStart.current = null;
+    clearTimeout(shapeHoldTimer.current);
+    inSmartPreview.current = false; smartPreviewShape.current = null; setSmartToast(null);
     clearLive();
   };
 
@@ -766,6 +949,7 @@ export default function HandwrittenNotes() {
     setShow(v => !v);
     [setShowPenMenu, setShowColorPicker, setShowSizeMenu, setShowBgPicker, setShowShapePicker]
       .filter(fn => fn !== setShow).forEach(fn => fn(false));
+    setSmartToast(null);
   };
 
   const isPenActive = tool === 'pen' || tool === 'highlighter';
@@ -963,6 +1147,12 @@ export default function HandwrittenNotes() {
           </button>
           <Sep />
 
+          {/* Smart shapes toggle */}
+          <ToolBtn active={smartMode} onClick={() => setSmartMode(v => !v)} title="Nhận diện hình thông minh — vẽ hình rồi giữ bút 1 giây">
+            <Sparkles size={14} />
+          </ToolBtn>
+          <Sep />
+
           {/* Background dropdown */}
           <button ref={bgBtnRef}
             onClick={openPopup(bgBtnRef, setBgPickerPos, setShowBgPicker, 290, 190)}
@@ -984,6 +1174,14 @@ export default function HandwrittenNotes() {
 
         {/* Canvas area — two layers */}
         <div ref={containerRef} style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#FEFDF8' }}>
+          {/* Smart shape toast */}
+          {smartToast && (
+            <div style={{ position: 'absolute', top: '12px', left: '50%', transform: 'translateX(-50%)', zIndex: 20, background: '#fff', border: '1.5px solid #7c3aed', borderRadius: '20px', padding: '7px 18px', boxShadow: '0 4px 20px rgba(124,58,237,0.18)', display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap', animation: 'smart-pop 0.18s ease-out', pointerEvents: 'none' }}>
+              <Sparkles size={14} style={{ color: '#7c3aed' }} />
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#7c3aed' }}>{smartToast.label}</span>
+              <span style={{ fontSize: '0.75rem', color: '#aaa' }}>— nhấc bút để xác nhận</span>
+            </div>
+          )}
           <canvas ref={committedCanvasRef} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', display: 'block' }} />
           <canvas ref={liveCanvasRef}
             onPointerDown={onPointerDown} onPointerMove={onPointerMove}
@@ -1130,6 +1328,7 @@ export default function HandwrittenNotes() {
 
       <style>{`
         @keyframes hn-spin { to { transform: rotate(360deg); } }
+        @keyframes smart-pop { from { transform: translateX(-50%) scale(0.82); opacity: 0; } to { transform: translateX(-50%) scale(1); opacity: 1; } }
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
       `}</style>
