@@ -323,14 +323,20 @@ export default function TaskManager() {
       setInputText('');
       setInputSectionId('');
       resetQuickFields();
+      if (viewMode === 'calendar') {
+        requestAnimationFrame(() => {
+          const main = document.querySelector('main');
+          if (main) main.scrollTo({ top: main.scrollHeight, behavior: 'smooth' });
+        });
+      }
     }
   };
 
   const handleNLPButtonClick = () => {
     if (inputText.trim()) {
-      const overrides = { 
-        projectId: inputProjectId || null, 
-        sectionId: inputSectionId || null 
+      const overrides = {
+        projectId: inputProjectId || null,
+        sectionId: inputSectionId || null
       };
       if (isDateModified) overrides.dueDate = quickDueDate;
       if (isTimeModified) overrides.dueTime = quickDueTime;
@@ -341,6 +347,12 @@ export default function TaskManager() {
       setInputText('');
       setInputSectionId('');
       resetQuickFields();
+      if (viewMode === 'calendar') {
+        requestAnimationFrame(() => {
+          const main = document.querySelector('main');
+          if (main) main.scrollTo({ top: main.scrollHeight, behavior: 'smooth' });
+        });
+      }
     }
   };
 

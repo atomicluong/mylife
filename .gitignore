@@ -39,3 +39,5 @@ timeflow_scraped_books.json
 .env
 .env.local
 .env.*.local
+
+.vercel

@@ -9,12 +9,13 @@ import HabitTracker from './components/HabitTracker';
 import Settings from './components/Settings';
 import OKRs from './components/OKRs';
 import AIChat from './components/AIChat';
+import HandwrittenNotes from './components/HandwrittenNotes';
 import { useIsMobile } from './hooks/useIsMobile';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, Pause, Play, Square } from 'lucide-react';
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem('tf_active_tab') || 'dashboard');
-  const { isReaderFullscreen, selectedTaskId } = useApp();
+  const { isReaderFullscreen, selectedTaskId, focusSessions, toggleFocusSession, stopAndLogFocusSession } = useApp();
   const isMobile = useIsMobile();
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
@@ -43,6 +44,7 @@ function AppContent() {
       case 'habits':    return <HabitTracker />;
       case 'okrs':      return <OKRs />;
       case 'ai-chat':   return <AIChat />;
+      case 'notes':     return <HandwrittenNotes />;
       case 'settings':  return <Settings />;
       default:          return <Dashboard setActiveTab={setActiveTab} />;
     }
@@ -121,11 +123,112 @@ function AppContent() {
         transition: 'padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
       }}>
         {renderActiveView()}
-        {/* Spacer — thêm khoảng trống thật ở cuối để không bị bottom nav che */}
-        {isMobile && !isReaderFullscreen && (
-          <div style={{ height: 'calc(80px + env(safe-area-inset-bottom))', flexShrink: 0 }} aria-hidden />
-        )}
+        {/* Spacer — pushes content above fixed bottom UI (timer + nav) */}
+        {isMobile && !isReaderFullscreen && (() => {
+          const hasNav = !isDetailsView;
+          const hasTimer = !isDetailsView && focusSessions.length > 0;
+          let h;
+          if (hasNav && hasTimer) h = 'calc(108px + env(safe-area-inset-bottom))';
+          else if (hasNav) h = 'calc(80px + env(safe-area-inset-bottom))';
+          else if (hasTimer) h = '52px';
+          else return null;
+          return <div style={{ height: h, flexShrink: 0 }} aria-hidden />;
+        })()}
       </main>
+
+      {/* Global focus timer bar — shows above bottom nav on mobile */}
+      {isMobile && !isReaderFullscreen && !isDetailsView && focusSessions.length > 0 && (() => {
+        const session = focusSessions[0];
+        const secs = session.secondsLeft || 0;
+        const m = Math.floor(secs / 60);
+        const s = secs % 60;
+        const timeStr = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        return (
+          <div style={{
+            position: 'fixed',
+            bottom: 'calc(56px + env(safe-area-inset-bottom))',
+            left: 0,
+            right: 0,
+            zIndex: 201,
+            background: 'rgba(30, 27, 60, 0.96)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            borderTop: '1px solid rgba(99,102,241,0.35)',
+            padding: '8px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+          }}>
+            <div style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: session.isActive ? '#10b981' : '#f97316',
+              boxShadow: session.isActive ? '0 0 6px #10b981' : 'none',
+              flexShrink: 0,
+              transition: 'background 0.3s',
+            }} />
+            <span style={{
+              flex: 1,
+              fontSize: '0.8rem',
+              fontWeight: 600,
+              color: 'var(--text-primary)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}>
+              {session.title || 'Đang đếm giờ...'}
+            </span>
+            <span style={{
+              fontSize: '0.92rem',
+              fontWeight: 700,
+              color: 'var(--accent-secondary)',
+              fontVariantNumeric: 'tabular-nums',
+              flexShrink: 0,
+              minWidth: '42px',
+              textAlign: 'right',
+            }}>
+              {timeStr}
+            </span>
+            <button
+              onClick={() => toggleFocusSession(session.id)}
+              style={{
+                background: 'rgba(99,102,241,0.18)',
+                border: '1px solid rgba(99,102,241,0.35)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              {session.isActive ? <Pause size={14} /> : <Play size={14} />}
+            </button>
+            <button
+              onClick={() => stopAndLogFocusSession(session.id)}
+              style={{
+                background: 'rgba(239,68,68,0.15)',
+                border: '1px solid rgba(239,68,68,0.3)',
+                borderRadius: '6px',
+                color: '#ef4444',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              <Square size={14} />
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Mobile bottom navigation */}
       {isMobile && !isReaderFullscreen && !isDetailsView && (

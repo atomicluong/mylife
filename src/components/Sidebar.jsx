@@ -22,7 +22,8 @@ import {
   MessageSquare,
   RefreshCw,
   Download,
-  Smartphone
+  Smartphone,
+  PenTool
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -80,6 +81,7 @@ export default function Sidebar({ activeTab, setActiveTab, isSidebarOpen, setIsS
     { id: 'tasks', name: 'Kế hoạch', icon: CheckSquare },
     { id: 'okrs', name: 'Mục tiêu OKR', icon: Target },
     { id: 'ai-chat', name: 'Trợ lý AI Chat', icon: MessageSquare },
+    { id: 'notes', name: 'Ghi chú tay', icon: PenTool },
     { id: 'habits', name: 'Thói quen', icon: Activity },
     { id: 'finance', name: 'Tài chính', icon: DollarSign },
     { id: 'settings', name: 'Thiết lập', icon: Settings },

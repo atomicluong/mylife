@@ -807,7 +807,12 @@ export default function CalendarView({
 
                             {/* Inline Reschedule form for this overdue task */}
                             {activeRescheduleTaskId === t.id && (
-                              <div 
+                              <div
+                                ref={el => {
+                                  if (el) {
+                                    requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+                                  }
+                                }}
                                 style={{
                                   padding: '8px 10px',
                                   background: 'rgba(9, 10, 18, 0.3)',
