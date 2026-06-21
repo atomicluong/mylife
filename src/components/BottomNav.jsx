@@ -6,6 +6,7 @@ import {
   Activity,
   DollarSign,
   MessageSquare,
+  PenTool,
   Settings
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -17,6 +18,7 @@ const NAV_ITEMS = [
   { id: 'habits',    label: 'Thói quen', icon: Activity },
   { id: 'finance',   label: 'Tài chính', icon: DollarSign },
   { id: 'ai-chat',   label: 'AI Chat',   icon: MessageSquare },
+  { id: 'notes',     label: 'Ghi chú',   icon: PenTool },
   { id: 'settings',  label: 'Thiết lập', icon: Settings },
 ];
 
