@@ -29,11 +29,13 @@ const COLORS = [
 
 // Canvas background configs
 const BG_OPTIONS = [
-  { id: 'blank',  label: 'Trắng',      base: '#FEFDF8' },
-  { id: 'dots',   label: 'Chấm bi',    base: '#FEFDF8' },
-  { id: 'lines',  label: 'Dòng kẻ',    base: '#FEFDF8' },
-  { id: 'grid',   label: 'Lưới ô',     base: '#FEFDF8' },
-  { id: 'aged',   label: 'Sách cũ',    base: '#f2e8ce' },
+  { id: 'blank',       label: 'Trắng',              base: '#FEFDF8' },
+  { id: 'dots',        label: 'Chấm bi',             base: '#FEFDF8' },
+  { id: 'lines',       label: 'Dòng kẻ',             base: '#FEFDF8' },
+  { id: 'grid',        label: 'Lưới ô',              base: '#FEFDF8' },
+  { id: 'aged_plain',  label: 'Sách cũ — Trơn',      base: '#f2e8ce' },
+  { id: 'aged',        label: 'Sách cũ — Kẻ dòng',   base: '#f2e8ce' },
+  { id: 'aged_grid',   label: 'Sách cũ — Lưới',      base: '#f2e8ce' },
 ];
 
 function ToolBtn({ active, onClick, title, children }) {
@@ -386,26 +388,43 @@ export default function HandwrittenNotes() {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
       }
 
-    } else if (bg === 'aged') {
-      // Aged book paper: warm sepia lines + faint stain edges
-      const lineSpacing = 22 * zoomRef.current;
-      const ly = (offsetYRef.current % lineSpacing) - lineSpacing;
-      ctx.strokeStyle = 'rgba(140,100,50,0.12)';
-      ctx.lineWidth = 0.7;
-      for (let y = ly; y < H + lineSpacing; y += lineSpacing) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-      }
-      // Left margin in sepia red
-      const mx = 48 * zoomRef.current + offsetXRef.current;
-      ctx.strokeStyle = 'rgba(180,80,50,0.2)';
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(mx, 0); ctx.lineTo(mx, H); ctx.stroke();
-      // Subtle vignette edges to look aged
-      const grad = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.85);
-      grad.addColorStop(0, 'rgba(180,130,60,0)');
-      grad.addColorStop(1, 'rgba(140,90,30,0.08)');
+    } else if (bg === 'aged_plain' || bg === 'aged' || bg === 'aged_grid') {
+      // Shared aged vignette
+      const grad = ctx.createRadialGradient(W / 2, H / 2, H * 0.25, W / 2, H / 2, H * 0.9);
+      grad.addColorStop(0, 'rgba(160,110,50,0)');
+      grad.addColorStop(1, 'rgba(120,75,20,0.1)');
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, W, H);
+
+      if (bg === 'aged') {
+        // Kẻ dòng + lề đỏ
+        const lineSpacing = 22 * zoomRef.current;
+        const ly = (offsetYRef.current % lineSpacing) - lineSpacing;
+        ctx.strokeStyle = 'rgba(140,100,50,0.13)';
+        ctx.lineWidth = 0.7;
+        for (let y = ly; y < H + lineSpacing; y += lineSpacing) {
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+        }
+        const mx = 48 * zoomRef.current + offsetXRef.current;
+        ctx.strokeStyle = 'rgba(180,70,40,0.22)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(mx, 0); ctx.lineTo(mx, H); ctx.stroke();
+
+      } else if (bg === 'aged_grid') {
+        // Lưới ô sepia
+        const gs = 22 * zoomRef.current;
+        const gx = (offsetXRef.current % gs) - gs;
+        const gy = (offsetYRef.current % gs) - gs;
+        ctx.strokeStyle = 'rgba(140,100,50,0.11)';
+        ctx.lineWidth = 0.7;
+        for (let x = gx; x < W + gs; x += gs) {
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+        }
+        for (let y = gy; y < H + gs; y += gs) {
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+        }
+      }
+      // aged_plain: chỉ vignette, không có đường kẻ
     }
 
     ctx.restore();
@@ -711,7 +730,7 @@ export default function HandwrittenNotes() {
     setActivePenPreset(idx);
     setTool(p.type === 'highlighter' ? 'highlighter' : 'pen');
     setColor(p.color);
-    setLineWidth(p.width);
+    setLineWidth(Math.round(p.width));
   };
 
   const zoom = (dir) => setZoomScale(prev => Math.max(0.15, Math.min(6, dir === 'in' ? prev * 1.25 : prev / 1.25)));
@@ -859,13 +878,22 @@ export default function HandwrittenNotes() {
             <span style={{ fontSize: '0.72rem', color: '#555', whiteSpace: 'nowrap' }}>Màu</span>
           </button>
 
-          {/* Size slider */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '0 4px', flexShrink: 0 }}>
-            <span style={{ fontSize: '0.7rem', color: '#aaa', whiteSpace: 'nowrap' }}>Cỡ</span>
-            <input type="range" min="1" max="20" step="0.5" value={lineWidth}
-              onChange={e => setLineWidth(parseFloat(e.target.value))}
-              style={{ width: '72px', accentColor: '#5c33c1', cursor: 'pointer' }} />
-            <div style={{ width: `${Math.min(Math.max(4, lineWidth * 1.6), 20)}px`, height: `${Math.min(Math.max(4, lineWidth * 1.6), 20)}px`, borderRadius: '50%', background: color, border: '1px solid #ddd', flexShrink: 0 }} />
+          {/* Size stepper: − number + */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
+            <button
+              onClick={() => setLineWidth(w => Math.max(1, Math.round(w) - 1))}
+              style={{ width: '26px', height: '26px', border: '1px solid #e0e0e0', borderRadius: '6px', background: '#fafafa', cursor: 'pointer', fontSize: '14px', color: '#555', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
+              −
+            </button>
+            <div style={{ minWidth: '34px', textAlign: 'center', fontSize: '0.8rem', fontWeight: 700, color: '#333', fontVariantNumeric: 'tabular-nums', userSelect: 'none' }}>
+              {Math.round(lineWidth)}
+            </div>
+            <button
+              onClick={() => setLineWidth(w => Math.min(20, Math.round(w) + 1))}
+              style={{ width: '26px', height: '26px', border: '1px solid #e0e0e0', borderRadius: '6px', background: '#fafafa', cursor: 'pointer', fontSize: '14px', color: '#555', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
+              +
+            </button>
+            <div style={{ width: `${Math.min(Math.max(4, Math.round(lineWidth) * 1.6), 20)}px`, height: `${Math.min(Math.max(4, Math.round(lineWidth) * 1.6), 20)}px`, borderRadius: '50%', background: color, border: '1px solid #ddd', flexShrink: 0, marginLeft: '4px' }} />
           </div>
           <Sep />
 
