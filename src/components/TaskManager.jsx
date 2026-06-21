@@ -27,6 +27,7 @@ import {
   Lightbulb
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useIsMobile } from '../hooks/useIsMobile';
 import CalendarView from './CalendarView';
 
 const getLocalDateStr = (d = new Date()) => {
@@ -95,17 +96,17 @@ const sortTasksByTime = (taskList) => {
 };
 
 export default function TaskManager() {
-  const isMobile = window.innerWidth <= 768;
+  const isMobile = useIsMobile();
   const {
     tasks,
     setTasks,
-    projects, 
-    addTask, 
-    addManualTask, 
-    updateTask, 
+    projects,
+    addTask,
+    addManualTask,
+    updateTask,
     deleteTask,
-    addSubtask, 
-    toggleSubtask, 
+    addSubtask,
+    toggleSubtask,
     deleteSubtask,
     updateSubtask,
     addProject,
@@ -118,7 +119,10 @@ export default function TaskManager() {
     focusSessions,
     toggleFocusSession,
     stopAndLogFocusSession,
-    getRealWeatherForHour: getWeatherForHour
+    getRealWeatherForHour: getWeatherForHour,
+    objectives,
+    keyResults,
+    updateKeyResult,
   } = useApp();
 
   const formatFocusTime = (secs) => {
@@ -145,6 +149,11 @@ export default function TaskManager() {
   const [isDateModified, setIsDateModified] = useState(false);
   const [isTimeModified, setIsTimeModified] = useState(false);
   const [hoveredHelpQuadrant, setHoveredHelpQuadrant] = useState(null);
+  const [activeQuadrant, setActiveQuadrant] = useState('Q1');
+  const [okrFilterId, setOkrFilterId] = useState('');
+  // KR progress prompt after marking a task done
+  const [krProgressTask, setKrProgressTask] = useState(null);
+  const [krProgressAmount, setKrProgressAmount] = useState('');
 
   const resetQuickFields = () => {
     setQuickDueDate(getLocalDateStr());
@@ -153,6 +162,17 @@ export default function TaskManager() {
     setQuickEisenhower('');
     setIsDateModified(false);
     setIsTimeModified(false);
+  };
+
+  const handleMarkDone = (taskId) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    const nowDone = task.status !== 'done';
+    updateTask(taskId, { status: nowDone ? 'done' : 'todo' });
+    if (nowDone && task.keyResultId) {
+      setKrProgressTask(task);
+      setKrProgressAmount('');
+    }
   };
 
   const handlePrevDate = () => {
@@ -375,6 +395,12 @@ export default function TaskManager() {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(t => t.title.toLowerCase().includes(q) || (t.description && t.description.toLowerCase().includes(q)));
+    }
+
+    // OKR filter: show only tasks linked to KRs under selected objective
+    if (okrFilterId) {
+      const krIds = keyResults.filter(kr => kr.objectiveId === okrFilterId || kr.id === okrFilterId).map(kr => kr.id);
+      filtered = filtered.filter(t => t.keyResultId && krIds.includes(t.keyResultId));
     }
 
     // Smart List logic
@@ -621,10 +647,7 @@ export default function TaskManager() {
             )}
 
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                updateTask(task.id, { status: task.status === 'done' ? 'todo' : 'done' });
-              }}
+              onClick={(e) => { e.stopPropagation(); handleMarkDone(task.id); }}
               style={{ border: 'none', background: 'none', cursor: 'pointer', color: task.status === 'done' ? 'var(--accent-success)' : 'var(--text-muted)' }}
             >
               {task.status === 'done' ? <CheckCircle size={20} /> : <Circle size={20} />}
@@ -995,10 +1018,7 @@ export default function TaskManager() {
             )}
 
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                updateTask(t.id, { status: t.status === 'done' ? 'todo' : 'done' });
-              }}
+              onClick={(e) => { e.stopPropagation(); handleMarkDone(t.id); }}
               style={{ border: 'none', background: 'none', cursor: 'pointer', color: t.status === 'done' ? 'var(--accent-success)' : 'var(--text-muted)' }}
             >
               {t.status === 'done' ? <CheckCircle size={20} /> : <Circle size={20} />}
@@ -1090,7 +1110,16 @@ export default function TaskManager() {
                     {projects.find(p => p.id === t.projectId)?.name}
                   </span>
                 )}
-                
+
+                {t.keyResultId && (() => {
+                  const kr = keyResults.find(k => k.id === t.keyResultId);
+                  return kr ? (
+                    <span style={{ fontSize: '0.68rem', background: 'rgba(99,102,241,0.12)', color: 'var(--accent-primary)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      🎯 {kr.title.length > 20 ? kr.title.slice(0, 20) + '…' : kr.title}
+                    </span>
+                  ) : null;
+                })()}
+
                 {isBlocked && (
                   <span style={{ fontSize: '0.72rem', color: 'var(--accent-warning)', display: 'flex', alignItems: 'center', gap: '2px', fontWeight: 600 }}>
                     <AlertTriangle size={12} /> Đang bị khóa
@@ -1671,6 +1700,42 @@ export default function TaskManager() {
                 </select>
               </div>
             )}
+
+            {/* Key Result linkage */}
+            <div>
+              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                🎯 Gắn với Key Result (OKR)
+              </label>
+              <select
+                value={selectedTask.keyResultId || ''}
+                onChange={(e) => updateTask(selectedTask.id, { keyResultId: e.target.value || null })}
+                style={{ width: '100%', padding: '0.4rem', borderRadius: '6px', background: 'var(--bg-glass)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', fontSize: '0.8rem', marginTop: '0.25rem' }}
+              >
+                <option value="">-- Không gắn với OKR --</option>
+                {objectives.map(obj => (
+                  <optgroup key={obj.id} label={obj.title}>
+                    {keyResults.filter(kr => kr.objectiveId === obj.id).map(kr => (
+                      <option key={kr.id} value={kr.id}>
+                        {kr.title} ({kr.currentValue}/{kr.targetValue} {kr.unit})
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              {selectedTask.keyResultId && (() => {
+                const kr = keyResults.find(k => k.id === selectedTask.keyResultId);
+                return kr ? (
+                  <div style={{ marginTop: '0.4rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ flex: 1, height: '6px', background: 'var(--bg-glass)', borderRadius: '3px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                      <div style={{ width: `${Math.min(100, Math.round(kr.currentValue / kr.targetValue * 100))}%`, height: '100%', background: 'var(--accent-primary)', borderRadius: '3px', transition: 'width 0.3s' }} />
+                    </div>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                      {kr.currentValue}/{kr.targetValue} {kr.unit} ({Math.round(kr.currentValue / kr.targetValue * 100)}%)
+                    </span>
+                  </div>
+                ) : null;
+              })()}
+            </div>
 
             {/* Subtasks (Microsoft style) */}
             <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem', marginTop: '0.5rem' }}>
@@ -2324,6 +2389,22 @@ export default function TaskManager() {
                 />
               </div>
 
+              {/* OKR filter */}
+              <select
+                value={okrFilterId}
+                onChange={(e) => setOkrFilterId(e.target.value)}
+                style={{ background: 'var(--bg-glass)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: okrFilterId ? 'var(--accent-primary)' : 'var(--text-muted)', fontSize: '0.8rem', padding: '4px 8px', outline: 'none', cursor: 'pointer', fontWeight: okrFilterId ? 700 : 400 }}
+              >
+                <option value="">🎯 Lọc theo OKR</option>
+                {objectives.map(obj => (
+                  <optgroup key={obj.id} label={obj.title}>
+                    {keyResults.filter(kr => kr.objectiveId === obj.id).map(kr => (
+                      <option key={kr.id} value={kr.id}>{kr.title.length > 28 ? kr.title.slice(0, 28) + '…' : kr.title}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+
               {/* View Mode Toggle (Lịch trình | Ma trận) */}
               <div style={{
                 display: 'flex',
@@ -2480,13 +2561,29 @@ export default function TaskManager() {
               case 'eisenhower':
               default:
                 return (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: isMobile ? '0.5rem' : '1rem', width: '100%' }}>
+                  <>
+                  {/* Mobile: tab switcher for quadrants */}
+                  {isMobile && (
+                    <div style={{ display: 'flex', gap: '4px', marginBottom: '0.5rem' }}>
+                      {[
+                        { id: 'Q1', label: 'Q1 Làm ngay', color: 'var(--accent-danger)', count: q1Tasks.length },
+                        { id: 'Q2', label: 'Q2 Kế hoạch', color: 'var(--accent-secondary)', count: q2Tasks.length },
+                        { id: 'Q3', label: 'Q3 Ủy quyền', color: 'var(--accent-warning)', count: q3Tasks.length },
+                        { id: 'Q4', label: 'Q4 Bỏ qua', color: 'var(--text-muted)', count: q4Tasks.length },
+                      ].map(q => (
+                        <button key={q.id} onClick={() => setActiveQuadrant(q.id)} style={{ flex: 1, border: activeQuadrant === q.id ? `2px solid ${q.color}` : '1px solid var(--border-color)', background: activeQuadrant === q.id ? `rgba(${q.id === 'Q1' ? '239,68,68' : q.id === 'Q2' ? '168,85,247' : q.id === 'Q3' ? '245,158,11' : '120,120,120'},0.12)` : 'var(--bg-glass)', color: activeQuadrant === q.id ? q.color : 'var(--text-muted)', borderRadius: '6px', padding: '5px 2px', fontSize: '0.65rem', fontWeight: activeQuadrant === q.id ? 700 : 500, cursor: 'pointer', textAlign: 'center', lineHeight: 1.3 }}>
+                          {q.label}<br /><span style={{ fontSize: '0.75rem', fontWeight: 800 }}>{q.count}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ display: isMobile ? 'flex' : 'grid', flexDirection: isMobile ? 'column' : undefined, gridTemplateColumns: isMobile ? undefined : '1fr 1fr', gap: isMobile ? '0.5rem' : '1rem', width: '100%' }}>
                     {/* Q1: Urgent & Important */}
-                    <div 
-                      className="glass-panel" 
+                    <div
+                      className="glass-panel"
                       onDragOver={handleMatrixDragOver}
                       onDrop={(e) => handleMatrixDrop(e, 'Q1')}
-                      style={{ padding: isMobile ? '0.6rem' : '1rem 1.2rem', minHeight: '160px', borderLeft: '4px solid var(--accent-danger)', position: 'relative' }}
+                      style={{ padding: isMobile ? '0.6rem' : '1rem 1.2rem', minHeight: '160px', borderLeft: '4px solid var(--accent-danger)', position: 'relative', display: isMobile && activeQuadrant !== 'Q1' ? 'none' : undefined }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                         <span className="quadrant-badge-q1" style={{ fontSize: isMobile ? '0.68rem' : undefined, padding: isMobile ? '4px 6px' : undefined }}>
@@ -2531,11 +2628,11 @@ export default function TaskManager() {
                     </div>
 
                     {/* Q2: Important, Not Urgent */}
-                    <div 
-                      className="glass-panel" 
+                    <div
+                      className="glass-panel"
                       onDragOver={handleMatrixDragOver}
                       onDrop={(e) => handleMatrixDrop(e, 'Q2')}
-                      style={{ padding: isMobile ? '0.6rem' : '1rem 1.2rem', minHeight: '160px', borderLeft: '4px solid var(--accent-secondary)', position: 'relative' }}
+                      style={{ padding: isMobile ? '0.6rem' : '1rem 1.2rem', minHeight: '160px', borderLeft: '4px solid var(--accent-secondary)', position: 'relative', display: isMobile && activeQuadrant !== 'Q2' ? 'none' : undefined }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                         <span className="quadrant-badge-q2" style={{ fontSize: isMobile ? '0.68rem' : undefined, padding: isMobile ? '4px 6px' : undefined }}>
@@ -2580,11 +2677,11 @@ export default function TaskManager() {
                     </div>
 
                     {/* Q3: Urgent, Not Important */}
-                    <div 
-                      className="glass-panel" 
+                    <div
+                      className="glass-panel"
                       onDragOver={handleMatrixDragOver}
                       onDrop={(e) => handleMatrixDrop(e, 'Q3')}
-                      style={{ padding: isMobile ? '0.6rem' : '1rem 1.2rem', minHeight: '160px', borderLeft: '4px solid var(--accent-warning)', position: 'relative' }}
+                      style={{ padding: isMobile ? '0.6rem' : '1rem 1.2rem', minHeight: '160px', borderLeft: '4px solid var(--accent-warning)', position: 'relative', display: isMobile && activeQuadrant !== 'Q3' ? 'none' : undefined }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                         <span className="quadrant-badge-q3" style={{ fontSize: isMobile ? '0.68rem' : undefined, padding: isMobile ? '4px 6px' : undefined }}>
@@ -2629,11 +2726,11 @@ export default function TaskManager() {
                     </div>
 
                     {/* Q4: Not Urgent & Not Important */}
-                    <div 
-                      className="glass-panel" 
+                    <div
+                      className="glass-panel"
                       onDragOver={handleMatrixDragOver}
                       onDrop={(e) => handleMatrixDrop(e, 'Q4')}
-                      style={{ padding: isMobile ? '0.6rem' : '1rem 1.2rem', minHeight: '160px', borderLeft: '4px solid var(--text-muted)', position: 'relative' }}
+                      style={{ padding: isMobile ? '0.6rem' : '1rem 1.2rem', minHeight: '160px', borderLeft: '4px solid var(--text-muted)', position: 'relative', display: isMobile && activeQuadrant !== 'Q4' ? 'none' : undefined }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                         <span className="quadrant-badge-q4" style={{ fontSize: isMobile ? '0.68rem' : undefined, padding: isMobile ? '4px 6px' : undefined }}>
@@ -2677,12 +2774,64 @@ export default function TaskManager() {
                       </div>
                     </div>
                   </div>
+                  </>
                 );
             }
           })()}
         </div>
 
       </div>
+
+      {/* KR progress prompt — shown after marking a task with keyResultId as done */}
+      {krProgressTask && (() => {
+        const kr = keyResults.find(k => k.id === krProgressTask.keyResultId);
+        if (!kr) { setKrProgressTask(null); return null; }
+        return (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+            onClick={() => setKrProgressTask(null)}
+          >
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--accent-primary)', borderRadius: '12px', padding: '1.25rem', maxWidth: '360px', width: '100%', boxShadow: '0 8px 40px rgba(99,102,241,0.25)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.5rem' }}>🎯 Cập nhật tiến độ OKR</div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>{kr.title}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Hiện tại:</span>
+                <strong style={{ color: 'var(--accent-primary)' }}>{kr.currentValue} {kr.unit}</strong>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>/ mục tiêu {kr.targetValue} {kr.unit}</span>
+              </div>
+              <div style={{ height: '6px', background: 'var(--bg-glass)', borderRadius: '3px', overflow: 'hidden', marginBottom: '1rem' }}>
+                <div style={{ width: `${Math.min(100, Math.round(kr.currentValue / kr.targetValue * 100))}%`, height: '100%', background: 'var(--accent-primary)', borderRadius: '3px' }} />
+              </div>
+              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Thêm vào tiến độ ({kr.unit}):</label>
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.35rem' }}>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder={`Số ${kr.unit} đã hoàn thành...`}
+                  value={krProgressAmount}
+                  onChange={e => setKrProgressAmount(e.target.value)}
+                  autoFocus
+                  style={{ flex: 1, padding: '0.45rem 0.6rem', borderRadius: '6px', background: 'var(--bg-glass)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', fontSize: '0.88rem', outline: 'none' }}
+                />
+                <button
+                  onClick={() => {
+                    const add = parseFloat(krProgressAmount);
+                    if (!isNaN(add) && add > 0) {
+                      updateKeyResult(kr.id, { currentValue: Math.min(kr.targetValue, kr.currentValue + add) });
+                    }
+                    setKrProgressTask(null);
+                  }}
+                  style={{ background: 'var(--accent-primary)', border: 'none', color: '#fff', borderRadius: '6px', padding: '0 1rem', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}
+                >
+                  Lưu
+                </button>
+                <button onClick={() => setKrProgressTask(null)} style={{ background: 'var(--bg-glass)', border: '1px solid var(--border-color)', color: 'var(--text-muted)', borderRadius: '6px', padding: '0 0.75rem', cursor: 'pointer', fontSize: '0.85rem' }}>Bỏ qua</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
