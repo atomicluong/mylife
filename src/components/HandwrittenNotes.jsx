@@ -1,18 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Undo2, Redo2, Save, Plus, Trash2,
-  Eraser, ChevronLeft, ZoomIn, ZoomOut, Maximize2,
+  Eraser, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2,
   Check, Menu, MousePointer2, Minus, Square, Download,
-  Circle as CircleIcon, ChevronDown,
+  Circle as CircleIcon, ChevronDown, BookOpen, Pencil, X,
 } from 'lucide-react';
 import { notesDb } from '../utils/notesDb';
 
+// ── Constants ────────────────────────────────────────────────────────────────
 const DEFAULT_PRESETS = [
   { type: 'pen',         color: '#1a1a2e', width: 2,  label: 'Mảnh' },
-  { type: 'pen',         color: '#1e40af', width: 3,  label: 'Xanh' },
-  { type: 'pen',         color: '#dc2626', width: 3,  label: 'Đỏ' },
-  { type: 'pen',         color: '#15803d', width: 2,  label: 'Lá' },
-  { type: 'highlighter', color: '#fbbf24', width: 12, label: 'Vàng' },
+  { type: 'pen',         color: '#1e40af', width: 4,  label: 'Xanh' },
+  { type: 'pen',         color: '#dc2626', width: 4,  label: 'Đỏ' },
+  { type: 'pen',         color: '#15803d', width: 3,  label: 'Lá' },
+  { type: 'highlighter', color: '#fbbf24', width: 12, label: 'Vàng HL' },
   { type: 'highlighter', color: '#86efac', width: 12, label: 'Xanh HL' },
 ];
 
@@ -43,7 +44,16 @@ const SHAPE_OPTIONS = [
   { id: 'circle', label: 'Hình tròn',  Icon: CircleIcon },
 ];
 
-// Tiny helpers
+const SIZE_OPTIONS = [1, 2, 3, 5, 7, 10, 14, 20];
+
+const NOTEBOOKS_KEY  = 'hn-notebooks';
+const PEN_KEY        = 'hn-pen-settings';
+const INITIAL_NB     = [{ id: 'default', name: 'Mặc định' }];
+
+const loadNb = () => { try { return JSON.parse(localStorage.getItem(NOTEBOOKS_KEY)) ?? INITIAL_NB; } catch { return INITIAL_NB; } };
+const loadPen = () => { try { return JSON.parse(localStorage.getItem(PEN_KEY)) ?? {}; } catch { return {}; } };
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 function ToolBtn({ active, onClick, title, children }) {
   return (
     <button onClick={onClick} title={title} style={{
@@ -63,58 +73,77 @@ function Sep() {
   return <div style={{ width: '1px', height: '26px', background: '#e5e5e5', margin: '0 4px', flexShrink: 0 }} />;
 }
 
-// Open popup: calculate position, flip up if near bottom of viewport
-function calcPopupPos(btnRef, approxHeight = 300) {
-  const rect = btnRef.current?.getBoundingClientRect();
-  if (!rect) return { top: 100, left: 0 };
-  const spaceBelow = window.innerHeight - rect.bottom - 8;
-  const top = spaceBelow >= approxHeight ? rect.bottom + 6 : rect.top - approxHeight - 6;
-  const left = Math.min(rect.left, window.innerWidth - 220);
+function calcPopupPos(btnRef, approxH = 300, approxW = 200) {
+  const r = btnRef.current?.getBoundingClientRect();
+  if (!r) return { top: 60, left: 8 };
+  const spaceBelow = window.innerHeight - r.bottom - 8;
+  const top = spaceBelow >= approxH ? r.bottom + 5 : r.top - approxH - 5;
+  const left = Math.min(r.left, window.innerWidth - approxW - 8);
   return { top: Math.max(8, top), left: Math.max(8, left) };
 }
 
+// ── Component ─────────────────────────────────────────────────────────────────
 export default function HandwrittenNotes() {
+  // Notebooks (localStorage)
+  const [notebooks, setNotebooks]             = useState(loadNb);
+  const [currentNbId, setCurrentNbId]         = useState('default');
+  const [openNbs, setOpenNbs]                 = useState(() => new Set(['default']));
+  const [editingNbId, setEditingNbId]         = useState(null);
+  const [editingNbName, setEditingNbName]     = useState('');
+
+  // Notes
   const [notes, setNotes]                     = useState([]);
   const [currentNoteId, setCurrentNoteId]     = useState(null);
   const [noteTitle, setNoteTitle]             = useState('');
   const [isEditingTitle, setIsEditingTitle]   = useState(false);
   const [titleInput, setTitleInput]           = useState('');
 
+  // Strokes + canvas state
   const [strokes, setStrokes]                 = useState([]);
-  const [tool, setTool]                       = useState('pen');
-  const [activePenPreset, setActivePenPreset] = useState(0);
-  const [penPresets]                          = useState(DEFAULT_PRESETS);
-  const [color, setColor]                     = useState('#1a1a2e');
-  const [lineWidth, setLineWidth]             = useState(3);
   const [background, setBackground]           = useState('dots');
+  const [offsetX, setOffsetX]                 = useState(0);
+  const [offsetY, setOffsetY]                 = useState(0);
+  const [zoomScale, setZoomScale]             = useState(1);
+  const [selectedIds, setSelectedIds]         = useState(new Set());
+  const [saveStatus, setSaveStatus]           = useState('idle');
+  const [isSidebarOpen, setIsSidebarOpen]     = useState(false);
 
-  const [offsetX, setOffsetX]   = useState(0);
-  const [offsetY, setOffsetY]   = useState(0);
-  const [zoomScale, setZoomScale] = useState(1);
+  // Pen settings (localStorage-persisted)
+  const _saved = loadPen();
+  const validTools = ['pen', 'highlighter', 'lasso', 'hand', 'eraser', 'line', 'rect', 'circle'];
+  const [tool, setTool]                       = useState(validTools.includes(_saved.tool) ? _saved.tool : 'pen');
+  const [activePenPreset, setActivePenPreset] = useState(_saved.activePenPreset ?? 0);
+  const [color, setColor]                     = useState(_saved.color ?? '#1a1a2e');
+  const [lineWidth, setLineWidth]             = useState(_saved.lineWidth ?? 7);
 
-  const [selectedIds, setSelectedIds] = useState(new Set());
-  const [saveStatus, setSaveStatus]   = useState('idle');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  // History
+  const [history, setHistory]                 = useState([[]]);
+  const [historyIndex, setHistoryIndex]       = useState(0);
 
-  // Popups — all use position:fixed to escape toolbar overflow clipping
-  const [showColorPicker, setShowColorPicker]   = useState(false);
-  const [colorPickerPos, setColorPickerPos]     = useState({ top: 0, left: 0 });
-  const [showBgPicker, setShowBgPicker]         = useState(false);
-  const [bgPickerPos, setBgPickerPos]           = useState({ top: 0, left: 0 });
-  const [showShapePicker, setShowShapePicker]   = useState(false);
-  const [shapePickerPos, setShapePickerPos]     = useState({ top: 0, left: 0 });
-  const colorBtnRef = useRef(null);
-  const bgBtnRef    = useRef(null);
-  const shapeBtnRef = useRef(null);
+  // Popups
+  const [showPenMenu, setShowPenMenu]         = useState(false);
+  const [penMenuPos, setPenMenuPos]           = useState({ top: 0, left: 0 });
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [colorPickerPos, setColorPickerPos]   = useState({ top: 0, left: 0 });
+  const [showSizeMenu, setShowSizeMenu]       = useState(false);
+  const [sizeMenuPos, setSizeMenuPos]         = useState({ top: 0, left: 0 });
+  const [showBgPicker, setShowBgPicker]       = useState(false);
+  const [bgPickerPos, setBgPickerPos]         = useState({ top: 0, left: 0 });
+  const [showShapePicker, setShowShapePicker] = useState(false);
+  const [shapePickerPos, setShapePickerPos]   = useState({ top: 0, left: 0 });
 
-  const [history, setHistory]         = useState([[]]);
-  const [historyIndex, setHistoryIndex] = useState(0);
+  const penMenuBtnRef   = useRef(null);
+  const colorBtnRef     = useRef(null);
+  const sizeBtnRef      = useRef(null);
+  const bgBtnRef        = useRef(null);
+  const shapeBtnRef     = useRef(null);
 
-  // Two canvas layers — eliminates getImageData/putImageData overhead
-  const committedCanvasRef = useRef(null); // background + saved strokes
-  const liveCanvasRef      = useRef(null); // current stroke / preview (transparent base)
+  // Two canvas layers
+  const committedCanvasRef = useRef(null);
+  const liveCanvasRef      = useRef(null);
   const containerRef       = useRef(null);
 
+  // Pointer / drawing state refs
   const isDrawing        = useRef(false);
   const currentPoints    = useRef([]);
   const shapeStart       = useRef(null);
@@ -125,7 +154,7 @@ export default function HandwrittenNotes() {
   const initialPinchZoom = useRef(1);
   const hasErased        = useRef(false);
 
-  // Refs that mirror state for use inside event handlers (avoid stale closures)
+  // Mirror state → refs (stable for pointer event handlers)
   const strokesRef  = useRef(strokes);
   const offsetXRef  = useRef(offsetX);
   const offsetYRef  = useRef(offsetY);
@@ -150,7 +179,15 @@ export default function HandwrittenNotes() {
   useEffect(() => { histRef.current    = history; },      [history]);
   useEffect(() => { histIdxRef.current = historyIndex; }, [historyIndex]);
 
-  // ── DB ──────────────────────────────────────────────────────────────
+  // Persist notebooks
+  useEffect(() => { localStorage.setItem(NOTEBOOKS_KEY, JSON.stringify(notebooks)); }, [notebooks]);
+
+  // Persist pen settings
+  useEffect(() => {
+    localStorage.setItem(PEN_KEY, JSON.stringify({ tool, color, lineWidth, activePenPreset }));
+  }, [tool, color, lineWidth, activePenPreset]);
+
+  // ── DB ─────────────────────────────────────────────────────────────────────
   useEffect(() => { loadAll(); }, []);
 
   const loadAll = async () => {
@@ -158,7 +195,7 @@ export default function HandwrittenNotes() {
       const all = await notesDb.getAllNotes();
       setNotes(all);
       if (all.length > 0) { if (!currentNoteId) openNote(all[0]); }
-      else createNote();
+      else createNote('default');
     } catch (e) { console.error(e); }
   };
 
@@ -172,12 +209,17 @@ export default function HandwrittenNotes() {
     setSelectedIds(new Set());
     setHistory([note.strokes || []]);  setHistoryIndex(0);
     setIsSidebarOpen(false);
+    const nbId = note.notebookId || 'default';
+    setCurrentNbId(nbId);
+    setOpenNbs(prev => new Set([...prev, nbId]));
   };
 
-  const createNote = async () => {
+  const createNote = async (nbId) => {
+    const targetNb = nbId ?? currentNbId ?? 'default';
     const note = {
       id: Math.random().toString(36).slice(2),
       title: `Ghi chú ${new Date().toLocaleDateString('vi-VN')}`,
+      notebookId: targetNb,
       strokes: [], offsetX: 0, offsetY: 0, zoomScale: 1,
       background: 'dots', updatedAt: Date.now(),
     };
@@ -202,6 +244,7 @@ export default function HandwrittenNotes() {
     try {
       await notesDb.saveNote({
         id: currentNoteId, title: noteTitle,
+        notebookId: currentNbId,
         strokes: overrideStrokes ?? strokesRef.current,
         offsetX: offsetXRef.current, offsetY: offsetYRef.current,
         zoomScale: zoomRef.current, background: bgRef.current,
@@ -210,7 +253,7 @@ export default function HandwrittenNotes() {
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
       setNotes(await notesDb.getAllNotes());
-    } catch (e) { setSaveStatus('error'); setTimeout(() => setSaveStatus('idle'), 3000); }
+    } catch { setSaveStatus('error'); setTimeout(() => setSaveStatus('idle'), 3000); }
   };
 
   const renameNote = async () => {
@@ -219,6 +262,7 @@ export default function HandwrittenNotes() {
     if (currentNoteId) {
       await notesDb.saveNote({
         id: currentNoteId, title: titleInput,
+        notebookId: currentNbId,
         strokes: strokesRef.current,
         offsetX: offsetXRef.current, offsetY: offsetYRef.current,
         zoomScale: zoomRef.current, background: bgRef.current,
@@ -234,7 +278,47 @@ export default function HandwrittenNotes() {
     return () => clearTimeout(t);
   }, [strokes, offsetX, offsetY, zoomScale, background]);
 
-  // ── History ─────────────────────────────────────────────────────────
+  // ── Notebooks ──────────────────────────────────────────────────────────────
+  const createNotebook = () => {
+    const name = window.prompt('Tên sổ tay mới:');
+    if (!name?.trim()) return;
+    const nb = { id: Math.random().toString(36).slice(2), name: name.trim() };
+    setNotebooks(prev => [...prev, nb]);
+    setCurrentNbId(nb.id);
+    setOpenNbs(prev => new Set([...prev, nb.id]));
+  };
+
+  const renameNotebook = (id) => {
+    if (!editingNbName.trim()) { setEditingNbId(null); return; }
+    setNotebooks(prev => prev.map(nb => nb.id === id ? { ...nb, name: editingNbName.trim() } : nb));
+    setEditingNbId(null);
+  };
+
+  const deleteNotebook = (id) => {
+    if (id === 'default') return;
+    const count = notes.filter(n => (n.notebookId || 'default') === id).length;
+    if (!window.confirm(count > 0
+      ? `Xóa sổ tay này? ${count} ghi chú sẽ chuyển về "Mặc định".`
+      : 'Xóa sổ tay này?')) return;
+    // Move notes to default
+    notes.filter(n => (n.notebookId || 'default') === id).forEach(note =>
+      notesDb.saveNote({ ...note, notebookId: 'default' })
+    );
+    setNotebooks(prev => prev.filter(nb => nb.id !== id));
+    if (currentNbId === id) setCurrentNbId('default');
+    loadAll();
+  };
+
+  const toggleNb = (id) => {
+    setOpenNbs(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+    setCurrentNbId(id);
+  };
+
+  // ── History ─────────────────────────────────────────────────────────────────
   const pushHistory = (next) => {
     const h = histRef.current.slice(0, histIdxRef.current + 1);
     h.push(next);
@@ -255,17 +339,17 @@ export default function HandwrittenNotes() {
     }
   };
 
-  // ── Canvas geometry ──────────────────────────────────────────────────
-  const toWorld = (clientX, clientY) => {
+  // ── Canvas geometry ─────────────────────────────────────────────────────────
+  const toWorld = (cx, cy) => {
     const r = liveCanvasRef.current?.getBoundingClientRect();
     if (!r) return { worldX: 0, worldY: 0 };
     return {
-      worldX: (clientX - r.left - offsetXRef.current) / zoomRef.current,
-      worldY: (clientY - r.top  - offsetYRef.current) / zoomRef.current,
+      worldX: (cx - r.left - offsetXRef.current) / zoomRef.current,
+      worldY: (cy - r.top  - offsetYRef.current) / zoomRef.current,
     };
   };
 
-  // ── Committed canvas render (background + saved strokes) ─────────────
+  // ── Render committed canvas (background + saved strokes) ────────────────────
   const renderCommitted = () => {
     const canvas = committedCanvasRef.current;
     if (!canvas) return;
@@ -274,10 +358,8 @@ export default function HandwrittenNotes() {
     const W = canvas.width / dpr, H = canvas.height / dpr;
 
     ctx.clearRect(0, 0, W, H);
-    const bg = bgRef.current;
-    ctx.fillStyle = BG_OPTIONS.find(b => b.id === bg)?.base ?? '#FEFDF8';
+    ctx.fillStyle = BG_OPTIONS.find(b => b.id === bgRef.current)?.base ?? '#FEFDF8';
     ctx.fillRect(0, 0, W, H);
-
     drawBackground(ctx, W, H);
 
     ctx.save();
@@ -285,7 +367,6 @@ export default function HandwrittenNotes() {
     ctx.scale(zoomRef.current, zoomRef.current);
     paintStrokes(ctx, strokesRef.current);
 
-    // Selection highlight
     if (selRef.current.size > 0) {
       strokesRef.current.forEach(s => {
         if (!selRef.current.has(s.id)) return;
@@ -305,7 +386,6 @@ export default function HandwrittenNotes() {
     ctx.restore();
   };
 
-  // ── Live canvas: clear ───────────────────────────────────────────────
   const clearLive = () => {
     const c = liveCanvasRef.current;
     if (!c) return;
@@ -313,18 +393,16 @@ export default function HandwrittenNotes() {
     c.getContext('2d').clearRect(0, 0, c.width / dpr, c.height / dpr);
   };
 
-  // Copy committed → live, then draw preview (for lasso/shapes)
+  // Copy committed → live then draw preview (lasso / shapes)
   const drawLivePreview = () => {
-    const live = liveCanvasRef.current;
-    const committed = committedCanvasRef.current;
+    const live = liveCanvasRef.current, committed = committedCanvasRef.current;
     if (!live || !committed) return;
     const ctx = live.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
     const W = live.width / dpr, H = live.height / dpr;
 
     ctx.clearRect(0, 0, W, H);
-    // GPU-accelerated copy — much faster than getImageData
-    ctx.drawImage(committed, 0, 0, W, H);
+    ctx.drawImage(committed, 0, 0, W, H); // GPU copy
 
     ctx.save();
     ctx.translate(offsetXRef.current, offsetYRef.current);
@@ -338,8 +416,7 @@ export default function HandwrittenNotes() {
       ctx.fillStyle = 'rgba(37,99,235,0.06)';
       ctx.beginPath();
       lassoPath.current.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
-      ctx.closePath();
-      ctx.fill(); ctx.stroke();
+      ctx.closePath(); ctx.fill(); ctx.stroke();
     } else if ((t === 'line' || t === 'rect' || t === 'circle') && shapeStart.current && currentPoints.current.length > 0) {
       const s = shapeStart.current, e = currentPoints.current[0];
       ctx.strokeStyle = colorRef.current;
@@ -355,7 +432,7 @@ export default function HandwrittenNotes() {
     ctx.restore();
   };
 
-  // Append single segment to live canvas (zero-latency pen drawing)
+  // Append one segment to live canvas (no clear — zero-latency)
   const appendLiveSegment = (p1, p2) => {
     const canvas = liveCanvasRef.current;
     if (!canvas) return;
@@ -363,7 +440,6 @@ export default function HandwrittenNotes() {
     ctx.save();
     ctx.translate(offsetXRef.current, offsetYRef.current);
     ctx.scale(zoomRef.current, zoomRef.current);
-
     if (toolRef.current === 'highlighter') {
       ctx.globalAlpha = 0.38;
       ctx.globalCompositeOperation = 'multiply';
@@ -382,58 +458,44 @@ export default function HandwrittenNotes() {
 
   const drawBackground = (ctx, W, H) => {
     const bg = bgRef.current;
-    if (bg === 'blank' || bg === 'aged_plain') {
-      if (bg === 'aged_plain') drawAgedVignette(ctx, W, H);
-      return;
-    }
-    const spacing = 24 * zoomRef.current;
-    const sx = (offsetXRef.current % spacing) - spacing;
-    const sy = (offsetYRef.current % spacing) - spacing;
+    if (bg === 'blank') return;
+    if (bg === 'aged_plain') { drawAgedVignette(ctx, W, H); return; }
+
+    const sp = 24 * zoomRef.current;
+    const sx = (offsetXRef.current % sp) - sp;
+    const sy = (offsetYRef.current % sp) - sp;
     ctx.save();
 
     if (bg === 'dots') {
       ctx.fillStyle = 'rgba(0,0,0,0.13)';
       const r = Math.max(0.7, 1.2 * Math.min(zoomRef.current, 1.5));
-      for (let x = sx; x < W + spacing; x += spacing)
-        for (let y = sy; y < H + spacing; y += spacing) {
+      for (let x = sx; x < W + sp; x += sp)
+        for (let y = sy; y < H + sp; y += sp) {
           ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
         }
     } else if (bg === 'lines') {
-      ctx.strokeStyle = 'rgba(0,0,0,0.09)';
-      ctx.lineWidth = 0.8;
-      for (let y = sy; y < H + spacing; y += spacing) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-      }
+      ctx.strokeStyle = 'rgba(0,0,0,0.09)'; ctx.lineWidth = 0.8;
+      for (let y = sy; y < H + sp; y += sp) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
       const mx = 48 * zoomRef.current + offsetXRef.current;
       ctx.strokeStyle = 'rgba(220,80,80,0.22)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(mx, 0); ctx.lineTo(mx, H); ctx.stroke();
     } else if (bg === 'grid') {
       ctx.strokeStyle = 'rgba(0,0,0,0.08)'; ctx.lineWidth = 0.8;
-      for (let x = sx; x < W + spacing; x += spacing) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
-      }
-      for (let y = sy; y < H + spacing; y += spacing) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-      }
+      for (let x = sx; x < W + sp; x += sp) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+      for (let y = sy; y < H + sp; y += sp) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
     } else if (bg === 'aged' || bg === 'aged_grid') {
       const ls = 22 * zoomRef.current;
       const lx = (offsetXRef.current % ls) - ls;
       const ly = (offsetYRef.current % ls) - ls;
       ctx.strokeStyle = 'rgba(140,100,50,0.13)'; ctx.lineWidth = 0.7;
       if (bg === 'aged') {
-        for (let y = ly; y < H + ls; y += ls) {
-          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-        }
+        for (let y = ly; y < H + ls; y += ls) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
         const mx = 48 * zoomRef.current + offsetXRef.current;
         ctx.strokeStyle = 'rgba(180,70,40,0.22)'; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(mx, 0); ctx.lineTo(mx, H); ctx.stroke();
       } else {
-        for (let x = lx; x < W + ls; x += ls) {
-          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
-        }
-        for (let y = ly; y < H + ls; y += ls) {
-          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-        }
+        for (let x = lx; x < W + ls; x += ls) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+        for (let y = ly; y < H + ls; y += ls) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
       }
       drawAgedVignette(ctx, W, H);
     }
@@ -441,11 +503,10 @@ export default function HandwrittenNotes() {
   };
 
   const drawAgedVignette = (ctx, W, H) => {
-    const grad = ctx.createRadialGradient(W / 2, H / 2, H * 0.25, W / 2, H / 2, H * 0.9);
-    grad.addColorStop(0, 'rgba(160,110,50,0)');
-    grad.addColorStop(1, 'rgba(120,75,20,0.1)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
+    const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.25, W / 2, H / 2, H * 0.9);
+    g.addColorStop(0, 'rgba(160,110,50,0)');
+    g.addColorStop(1, 'rgba(120,75,20,0.1)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   };
 
   const paintStrokes = (ctx, list) => {
@@ -453,23 +514,19 @@ export default function HandwrittenNotes() {
       if (!stroke.points?.length) return;
       ctx.save();
       if (stroke.type === 'highlighter') {
-        ctx.globalAlpha = 0.38;
-        ctx.globalCompositeOperation = 'multiply';
-        ctx.strokeStyle = stroke.color;
-        ctx.lineWidth = stroke.width * 2.5;
+        ctx.globalAlpha = 0.38; ctx.globalCompositeOperation = 'multiply';
+        ctx.strokeStyle = stroke.color; ctx.lineWidth = stroke.width * 2.5;
         ctx.lineCap = 'round'; ctx.lineJoin = 'round';
         const pts = stroke.points;
         ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
         for (let i = 1; i < pts.length - 1; i++) {
-          const xc = (pts[i].x + pts[i + 1].x) / 2;
-          const yc = (pts[i].y + pts[i + 1].y) / 2;
+          const xc = (pts[i].x + pts[i + 1].x) / 2, yc = (pts[i].y + pts[i + 1].y) / 2;
           ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
         }
         if (pts.length > 1) ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
         ctx.stroke();
       } else {
-        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        ctx.strokeStyle = stroke.color;
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = stroke.color;
         const pts = stroke.points;
         if (pts.length === 1) {
           ctx.fillStyle = stroke.color;
@@ -499,10 +556,9 @@ export default function HandwrittenNotes() {
       const dpr = window.devicePixelRatio || 1;
       const W = cont.clientWidth, H = cont.clientHeight;
       [committedCanvasRef, liveCanvasRef].forEach(ref => {
-        const c = ref.current;
-        if (!c) return;
-        c.width  = W * dpr;  c.height = H * dpr;
-        c.style.width  = `${W}px`;  c.style.height = `${H}px`;
+        const c = ref.current; if (!c) return;
+        c.width = W * dpr; c.height = H * dpr;
+        c.style.width = `${W}px`; c.style.height = `${H}px`;
         c.getContext('2d').scale(dpr, dpr);
       });
       renderCommittedRef.current();
@@ -512,66 +568,54 @@ export default function HandwrittenNotes() {
     return () => window.removeEventListener('resize', resize);
   }, []);
 
-  // Re-render committed on state change, clear live
-  useEffect(() => {
-    renderCommittedRef.current();
-    clearLive();
-  }, [strokes, offsetX, offsetY, zoomScale, background, selectedIds]);
+  useEffect(() => { renderCommittedRef.current(); clearLive(); },
+    [strokes, offsetX, offsetY, zoomScale, background, selectedIds]);
 
-  // Mouse-wheel zoom (on live canvas which is on top)
   useEffect(() => {
-    const canvas = liveCanvasRef.current;
-    if (!canvas) return;
-    const onWheel = (e) => {
-      e.preventDefault();
-      setZoomScale(prev => Math.max(0.15, Math.min(6, prev * (e.deltaY < 0 ? 1.1 : 1 / 1.1))));
-    };
-    canvas.addEventListener('wheel', onWheel, { passive: false });
-    return () => canvas.removeEventListener('wheel', onWheel);
+    const c = liveCanvasRef.current; if (!c) return;
+    const fn = (e) => { e.preventDefault(); setZoomScale(p => Math.max(0.15, Math.min(6, p * (e.deltaY < 0 ? 1.1 : 1 / 1.1)))); };
+    c.addEventListener('wheel', fn, { passive: false });
+    return () => c.removeEventListener('wheel', fn);
   }, []);
 
-  // Close popups on outside click
+  // Close all popups on outside click
+  const anyPopup = showPenMenu || showColorPicker || showSizeMenu || showBgPicker || showShapePicker;
   useEffect(() => {
-    if (!showColorPicker && !showBgPicker && !showShapePicker) return;
-    const close = () => { setShowColorPicker(false); setShowBgPicker(false); setShowShapePicker(false); };
+    if (!anyPopup) return;
+    const close = () => { setShowPenMenu(false); setShowColorPicker(false); setShowSizeMenu(false); setShowBgPicker(false); setShowShapePicker(false); };
     const t = setTimeout(() => document.addEventListener('pointerdown', close), 10);
     return () => { clearTimeout(t); document.removeEventListener('pointerdown', close); };
-  }, [showColorPicker, showBgPicker, showShapePicker]);
+  }, [anyPopup]);
 
-  // ── Eraser ───────────────────────────────────────────────────────────
+  // ── Eraser ─────────────────────────────────────────────────────────────────
   const erase = (wx, wy) => {
-    const threshold = 18 / zoomRef.current;
-    const remaining = strokesRef.current.filter(s => {
-      const hit = s.points.some(p => {
-        const dx = p.x - wx, dy = p.y - wy;
-        return dx * dx + dy * dy < threshold * threshold;
-      });
+    const thr = 18 / zoomRef.current;
+    const rem = strokesRef.current.filter(s => {
+      const hit = s.points.some(p => { const dx = p.x - wx, dy = p.y - wy; return dx*dx + dy*dy < thr*thr; });
       if (hit) hasErased.current = true;
       return !hit;
     });
-    if (remaining.length !== strokesRef.current.length) setStrokes(remaining);
+    if (rem.length !== strokesRef.current.length) setStrokes(rem);
   };
 
-  // ── Lasso ────────────────────────────────────────────────────────────
+  // ── Lasso ──────────────────────────────────────────────────────────────────
   const finalizeLasso = (path) => {
     if (path.length < 3) return;
     const xs = path.map(p => p.x), ys = path.map(p => p.y);
-    const minX = Math.min(...xs), maxX = Math.max(...xs);
-    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
     const ids = new Set();
     strokesRef.current.forEach(s => {
-      if (s.points.some(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY))
-        ids.add(s.id);
+      if (s.points.some(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY)) ids.add(s.id);
     });
     setSelectedIds(ids);
   };
 
   const deleteSelected = () => {
-    const remaining = strokesRef.current.filter(s => !selRef.current.has(s.id));
-    setStrokes(remaining);  pushHistory(remaining);  setSelectedIds(new Set());
+    const rem = strokesRef.current.filter(s => !selRef.current.has(s.id));
+    setStrokes(rem); pushHistory(rem); setSelectedIds(new Set());
   };
 
-  // ── Shape → points ───────────────────────────────────────────────────
+  // ── Shape to points ────────────────────────────────────────────────────────
   const shapeToPoints = (t, s, e) => {
     if (t === 'line') return [{ x: s.x, y: s.y, p: 0.5 }, { x: e.x, y: e.y, p: 0.5 }];
     if (t === 'rect') return [
@@ -587,47 +631,34 @@ export default function HandwrittenNotes() {
     });
   };
 
-  // ── Pointer events (on liveCanvas, which is on top) ──────────────────
+  // ── Pointer events ─────────────────────────────────────────────────────────
   const onPointerDown = (e) => {
     e.preventDefault();
-    const canvas = liveCanvasRef.current;
-    if (!canvas) return;
+    const canvas = liveCanvasRef.current; if (!canvas) return;
     canvas.setPointerCapture(e.pointerId);
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     lastPointerPos.current = { x: e.clientX, y: e.clientY };
-
     const { worldX, worldY } = toWorld(e.clientX, e.clientY);
 
     if (activePointers.current.size >= 2) {
-      isDrawing.current = false;  currentPoints.current = [];
-      const [id1, id2] = Array.from(activePointers.current.keys());
-      const p1 = activePointers.current.get(id1), p2 = activePointers.current.get(id2);
-      initialPinchDist.current = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+      isDrawing.current = false; currentPoints.current = [];
+      const [a, b] = Array.from(activePointers.current.keys());
+      const pa = activePointers.current.get(a), pb = activePointers.current.get(b);
+      initialPinchDist.current = Math.hypot(pa.x - pb.x, pa.y - pb.y);
       initialPinchZoom.current = zoomRef.current;
       return;
     }
-
     if (e.pointerType === 'touch') { isDrawing.current = false; return; }
     if (toolRef.current === 'hand' || e.buttons === 4) { isDrawing.current = false; return; }
 
     const t = toolRef.current;
     if (t !== 'lasso') { selRef.current = new Set(); setSelectedIds(new Set()); }
+    isDrawing.current = true; hasErased.current = false;
 
-    isDrawing.current = true;
-    hasErased.current = false;
-
-    if (t === 'lasso') {
-      lassoPath.current = [{ x: worldX, y: worldY }];
-    } else if (t === 'line' || t === 'rect' || t === 'circle') {
-      shapeStart.current = { x: worldX, y: worldY };
-      currentPoints.current = [{ x: worldX, y: worldY }];
-    } else if (t === 'eraser') {
-      erase(worldX, worldY);
-    } else {
-      // pen / highlighter: start live drawing on liveCanvas
-      const pressure = e.pressure > 0 ? e.pressure : 0.5;
-      currentPoints.current = [{ x: worldX, y: worldY, p: pressure }];
-    }
+    if (t === 'lasso') { lassoPath.current = [{ x: worldX, y: worldY }]; }
+    else if (t === 'line' || t === 'rect' || t === 'circle') { shapeStart.current = { x: worldX, y: worldY }; currentPoints.current = [{ x: worldX, y: worldY }]; }
+    else if (t === 'eraser') { erase(worldX, worldY); }
+    else { currentPoints.current = [{ x: worldX, y: worldY, p: e.pressure > 0 ? e.pressure : 0.5 }]; }
   };
 
   const onPointerMove = (e) => {
@@ -635,48 +666,36 @@ export default function HandwrittenNotes() {
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const { worldX, worldY } = toWorld(e.clientX, e.clientY);
 
-    // Pinch zoom
     if (activePointers.current.size >= 2) {
-      const [id1, id2] = Array.from(activePointers.current.keys());
-      const p1 = activePointers.current.get(id1), p2 = activePointers.current.get(id2);
-      const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+      const [a, b] = Array.from(activePointers.current.keys());
+      const pa = activePointers.current.get(a), pb = activePointers.current.get(b);
+      const dist = Math.hypot(pa.x - pb.x, pa.y - pb.y);
       if (initialPinchDist.current > 0)
         setZoomScale(Math.max(0.15, Math.min(6, initialPinchZoom.current * (dist / initialPinchDist.current))));
       const dx = e.clientX - lastPointerPos.current.x, dy = e.clientY - lastPointerPos.current.y;
-      setOffsetX(p => p + dx / 2);  setOffsetY(p => p + dy / 2);
+      setOffsetX(p => p + dx / 2); setOffsetY(p => p + dy / 2);
       lastPointerPos.current = { x: e.clientX, y: e.clientY };
       return;
     }
-
-    // Finger pan
     if (e.pointerType === 'touch') {
       const dx = e.clientX - lastPointerPos.current.x, dy = e.clientY - lastPointerPos.current.y;
-      setOffsetX(p => p + dx);  setOffsetY(p => p + dy);
+      setOffsetX(p => p + dx); setOffsetY(p => p + dy);
       lastPointerPos.current = { x: e.clientX, y: e.clientY };
       return;
     }
-
-    // Hand tool / middle mouse pan
     if (toolRef.current === 'hand' || e.buttons === 4) {
       const dx = e.clientX - lastPointerPos.current.x, dy = e.clientY - lastPointerPos.current.y;
-      setOffsetX(p => p + dx);  setOffsetY(p => p + dy);
+      setOffsetX(p => p + dx); setOffsetY(p => p + dy);
       lastPointerPos.current = { x: e.clientX, y: e.clientY };
       return;
     }
-
     if (!isDrawing.current) return;
     const t = toolRef.current;
 
-    if (t === 'lasso') {
-      lassoPath.current.push({ x: worldX, y: worldY });
-      drawLivePreview();
-    } else if (t === 'line' || t === 'rect' || t === 'circle') {
-      currentPoints.current = [{ x: worldX, y: worldY }];
-      drawLivePreview();
-    } else if (t === 'eraser') {
-      erase(worldX, worldY);
-    } else {
-      // Pen / highlighter: append segment directly to live canvas (zero-clear, zero-copy)
+    if (t === 'lasso') { lassoPath.current.push({ x: worldX, y: worldY }); drawLivePreview(); }
+    else if (t === 'line' || t === 'rect' || t === 'circle') { currentPoints.current = [{ x: worldX, y: worldY }]; drawLivePreview(); }
+    else if (t === 'eraser') { erase(worldX, worldY); }
+    else {
       const pressure = e.pressure > 0 ? e.pressure : 0.5;
       const pts = currentPoints.current;
       if (pts.length > 0) {
@@ -692,112 +711,164 @@ export default function HandwrittenNotes() {
     liveCanvasRef.current?.releasePointerCapture(e.pointerId);
     activePointers.current.delete(e.pointerId);
     if (activePointers.current.size < 2) initialPinchDist.current = 0;
-
     if (!isDrawing.current) return;
     isDrawing.current = false;
     const t = toolRef.current;
 
-    if (t === 'lasso') {
-      finalizeLasso(lassoPath.current);
-      lassoPath.current = [];
-    } else if (t === 'eraser') {
-      if (hasErased.current) pushHistory(strokesRef.current);
-    } else if (t === 'line' || t === 'rect' || t === 'circle') {
+    if (t === 'lasso') { finalizeLasso(lassoPath.current); lassoPath.current = []; }
+    else if (t === 'eraser') { if (hasErased.current) pushHistory(strokesRef.current); }
+    else if (t === 'line' || t === 'rect' || t === 'circle') {
       if (shapeStart.current && currentPoints.current.length > 0) {
         const pts = shapeToPoints(t, shapeStart.current, currentPoints.current[0]);
         if (pts.length > 0) {
           const ns = { id: Math.random().toString(36).slice(2), type: 'pen', color: colorRef.current, width: lwRef.current, points: pts };
           const next = [...strokesRef.current, ns];
-          setStrokes(next);  pushHistory(next);
+          setStrokes(next); pushHistory(next);
         }
       }
-      shapeStart.current = null;  currentPoints.current = [];
+      shapeStart.current = null; currentPoints.current = [];
     } else if (currentPoints.current.length > 0) {
-      const ns = {
-        id: Math.random().toString(36).slice(2),
-        type: t === 'highlighter' ? 'highlighter' : 'pen',
-        color: colorRef.current, width: lwRef.current,
-        points: [...currentPoints.current],
-      };
+      const ns = { id: Math.random().toString(36).slice(2), type: t === 'highlighter' ? 'highlighter' : 'pen', color: colorRef.current, width: lwRef.current, points: [...currentPoints.current] };
       const next = [...strokesRef.current, ns];
-      setStrokes(next);  pushHistory(next);
+      setStrokes(next); pushHistory(next);
       currentPoints.current = [];
     }
-    // State update → useEffect → renderCommitted + clearLive
   };
 
   const onPointerCancel = (e) => {
     activePointers.current.delete(e.pointerId);
     isDrawing.current = false;
-    currentPoints.current = [];  lassoPath.current = [];  shapeStart.current = null;
+    currentPoints.current = []; lassoPath.current = []; shapeStart.current = null;
     clearLive();
   };
 
-  // ── Misc ─────────────────────────────────────────────────────────────
+  // ── Misc ───────────────────────────────────────────────────────────────────
   const selectPreset = (idx) => {
-    const p = penPresets[idx];
+    const p = DEFAULT_PRESETS[idx];
     setActivePenPreset(idx);
     setTool(p.type === 'highlighter' ? 'highlighter' : 'pen');
     setColor(p.color);
-    setLineWidth(Math.round(p.width));
+    setLineWidth(p.width);
   };
 
   const zoom = (dir) => setZoomScale(p => Math.max(0.15, Math.min(6, dir === 'in' ? p * 1.25 : p / 1.25)));
   const resetView = () => { setOffsetX(0); setOffsetY(0); setZoomScale(1); };
 
   const exportPng = () => {
-    // Merge committed + live onto a temp canvas to export
-    const committed = committedCanvasRef.current;
-    if (!committed) return;
-    const url = committed.toDataURL('image/png');
-    const a = document.createElement('a');
-    a.href = url;  a.download = `${noteTitle || 'ghi-chu'}.png`;  a.click();
+    const url = committedCanvasRef.current?.toDataURL('image/png');
+    if (!url) return;
+    const a = document.createElement('a'); a.href = url; a.download = `${noteTitle || 'ghi-chu'}.png`; a.click();
   };
 
-  const openPopup = (btnRef, setPos, approxHeight, setShow, ...closers) => (e) => {
+  const openPopup = (btnRef, setPos, setShow, h = 300, w = 200) => (e) => {
     e.stopPropagation();
-    setPos(calcPopupPos(btnRef, approxHeight));
+    setPos(calcPopupPos(btnRef, h, w));
     setShow(v => !v);
-    closers.forEach(fn => fn(false));
+    [setShowPenMenu, setShowColorPicker, setShowSizeMenu, setShowBgPicker, setShowShapePicker]
+      .filter(fn => fn !== setShow).forEach(fn => fn(false));
   };
 
   const isPenActive = tool === 'pen' || tool === 'highlighter';
   const isShapeActive = tool === 'line' || tool === 'rect' || tool === 'circle';
+  const currentPreset = DEFAULT_PRESETS[activePenPreset];
   const currentShapeOpt = SHAPE_OPTIONS.find(s => s.id === tool);
   const getCursor = () => tool === 'hand' ? 'grab' : tool === 'eraser' ? 'cell' : 'crosshair';
 
-  // ── JSX ──────────────────────────────────────────────────────────────
+  // ── JSX ────────────────────────────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', height: '100%', width: '100%', overflow: 'hidden', fontFamily: 'system-ui,-apple-system,sans-serif' }}>
 
-      {/* SIDEBAR */}
-      <div style={{ width: isSidebarOpen ? '240px' : '0px', transition: 'width 0.22s ease', overflow: 'hidden', flexShrink: 0, background: '#fff', borderRight: '1px solid #e8e8e8', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ width: '240px', height: '100%', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '12px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontWeight: 700, fontSize: '0.75rem', color: '#5c33c1', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Ghi chú</span>
-            <button onClick={() => setIsSidebarOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#aaa', padding: '4px', borderRadius: '4px' }}>
-              <ChevronLeft size={15} />
+      {/* ── SIDEBAR ── */}
+      <div style={{ width: isSidebarOpen ? '250px' : '0px', transition: 'width 0.22s ease', overflow: 'hidden', flexShrink: 0, background: '#fff', borderRight: '1px solid #e8e8e8', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ width: '250px', height: '100%', display: 'flex', flexDirection: 'column' }}>
+
+          {/* Sidebar header */}
+          <div style={{ padding: '10px 12px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <BookOpen size={14} style={{ color: '#5c33c1' }} />
+              <span style={{ fontWeight: 700, fontSize: '0.74rem', color: '#5c33c1', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Sổ ghi chú</span>
+            </div>
+            <button onClick={() => setIsSidebarOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#aaa', padding: '3px', borderRadius: '4px' }}>
+              <X size={14} />
             </button>
           </div>
-          <div style={{ padding: '8px' }}>
-            <button onClick={createNote} style={{ width: '100%', padding: '7px 12px', background: '#5c33c1', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.76rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center' }}>
-              <Plus size={13} /> Tạo mới
+
+          {/* Sidebar actions */}
+          <div style={{ padding: '8px', display: 'flex', gap: '6px', borderBottom: '1px solid #f0f0f0', flexShrink: 0 }}>
+            <button onClick={() => createNote()} style={{ flex: 1, padding: '6px 8px', background: '#5c33c1', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'center' }}>
+              <Plus size={12} /> Ghi chú mới
+            </button>
+            <button onClick={createNotebook} title="Tạo sổ tay mới" style={{ padding: '6px 9px', background: '#f5f3ff', color: '#5c33c1', border: '1px solid #ede9fb', borderRadius: '6px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px' }}>
+              <BookOpen size={12} /> Sổ tay
             </button>
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: '2px 8px' }}>
-            {notes.map(note => {
-              const active = note.id === currentNoteId;
+
+          {/* Notebooks + notes list */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '4px 6px' }}>
+            {notebooks.map(nb => {
+              const nbNotes = notes.filter(n => (n.notebookId || 'default') === nb.id);
+              const isExpanded = openNbs.has(nb.id);
+              const isCurrent = currentNbId === nb.id;
+
               return (
-                <div key={note.id} onClick={() => openNote(note)} style={{ padding: '8px 10px', borderRadius: '6px', cursor: 'pointer', marginBottom: '2px', background: active ? '#ede9fb' : 'transparent', borderLeft: `3px solid ${active ? '#5c33c1' : 'transparent'}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: active ? 600 : 400, color: active ? '#5c33c1' : '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{note.title}</p>
-                    <p style={{ margin: '2px 0 0', fontSize: '0.65rem', color: '#bbb' }}>{new Date(note.updatedAt).toLocaleDateString('vi-VN')}</p>
+                <div key={nb.id} style={{ marginBottom: '2px' }}>
+                  {/* Notebook header */}
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '5px 6px', borderRadius: '6px', cursor: 'pointer', background: isCurrent ? '#f5f3ff' : 'transparent', gap: '4px' }}>
+                    <span onClick={() => toggleNb(nb.id)} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '5px', minWidth: 0 }}>
+                      {isExpanded ? <ChevronDown size={11} style={{ color: '#888', flexShrink: 0 }} /> : <ChevronRight size={11} style={{ color: '#888', flexShrink: 0 }} />}
+                      {editingNbId === nb.id
+                        ? <input autoFocus value={editingNbName}
+                            onChange={e => setEditingNbName(e.target.value)}
+                            onBlur={() => renameNotebook(nb.id)}
+                            onKeyDown={e => { if (e.key === 'Enter') renameNotebook(nb.id); if (e.key === 'Escape') setEditingNbId(null); }}
+                            onClick={e => e.stopPropagation()}
+                            style={{ border: '1px solid #5c33c1', borderRadius: '3px', padding: '1px 4px', fontSize: '0.75rem', fontWeight: 600, outline: 'none', width: '100%' }} />
+                        : <span style={{ fontSize: '0.75rem', fontWeight: isCurrent ? 700 : 600, color: isCurrent ? '#5c33c1' : '#444', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {nb.name}
+                          </span>
+                      }
+                      <span style={{ fontSize: '0.62rem', color: '#bbb', flexShrink: 0 }}>{nbNotes.length}</span>
+                    </span>
+                    <button onClick={e => { e.stopPropagation(); setEditingNbId(nb.id); setEditingNbName(nb.name); }}
+                      style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#ccc', padding: '2px', borderRadius: '3px', flexShrink: 0, opacity: 0, transition: 'opacity 0.1s' }}
+                      onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = '#5c33c1'; }}
+                      onMouseLeave={e => { e.currentTarget.style.opacity = '0'; }}>
+                      <Pencil size={10} />
+                    </button>
+                    {nb.id !== 'default' && (
+                      <button onClick={e => { e.stopPropagation(); deleteNotebook(nb.id); }}
+                        style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#ccc', padding: '2px', borderRadius: '3px', flexShrink: 0, opacity: 0 }}
+                        onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = '#ef4444'; }}
+                        onMouseLeave={e => { e.currentTarget.style.opacity = '0'; }}>
+                        <X size={10} />
+                      </button>
+                    )}
                   </div>
-                  <button onClick={(e) => deleteNote(note.id, e)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#ddd', padding: '2px', borderRadius: '4px', flexShrink: 0 }}
-                    onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
-                    onMouseLeave={e => e.currentTarget.style.color = '#ddd'}>
-                    <Trash2 size={12} />
-                  </button>
+
+                  {/* Notes under this notebook */}
+                  {isExpanded && (
+                    <div style={{ paddingLeft: '16px' }}>
+                      {nbNotes.length === 0
+                        ? <p style={{ fontSize: '0.68rem', color: '#d1d5db', padding: '4px 8px', margin: 0 }}>Chưa có ghi chú</p>
+                        : nbNotes.map(note => {
+                          const active = note.id === currentNoteId;
+                          return (
+                            <div key={note.id} onClick={() => openNote(note)} style={{ padding: '6px 8px', borderRadius: '6px', cursor: 'pointer', marginBottom: '1px', background: active ? '#ede9fb' : 'transparent', borderLeft: `2px solid ${active ? '#5c33c1' : 'transparent'}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ margin: 0, fontSize: '0.76rem', fontWeight: active ? 600 : 400, color: active ? '#5c33c1' : '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{note.title}</p>
+                                <p style={{ margin: '1px 0 0', fontSize: '0.62rem', color: '#bbb' }}>{new Date(note.updatedAt).toLocaleDateString('vi-VN')}</p>
+                              </div>
+                              <button onClick={ev => deleteNote(note.id, ev)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#ddd', padding: '2px', borderRadius: '3px', flexShrink: 0 }}
+                                onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+                                onMouseLeave={e => e.currentTarget.style.color = '#ddd'}>
+                                <Trash2 size={11} />
+                              </button>
+                            </div>
+                          );
+                        })
+                      }
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -805,76 +876,63 @@ export default function HandwrittenNotes() {
         </div>
       </div>
 
-      {/* MAIN */}
+      {/* ── MAIN ── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
 
         {/* Title bar */}
         <div style={{ background: '#fff', borderBottom: '1px solid #e8e8e8', padding: '5px 10px', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
           <button onClick={() => setIsSidebarOpen(v => !v)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#666', padding: '5px', borderRadius: '5px' }}>
-            <Menu size={17} />
+            <Menu size={16} />
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>
             {isEditingTitle
               ? <input value={titleInput} onChange={e => setTitleInput(e.target.value)} onBlur={renameNote} onKeyDown={e => e.key === 'Enter' && renameNote()} autoFocus
-                  style={{ border: '1px solid #5c33c1', borderRadius: '4px', padding: '2px 7px', fontSize: '0.86rem', fontWeight: 600, outline: 'none', maxWidth: '260px', width: '100%' }} />
-              : <span onClick={() => setIsEditingTitle(true)} title="Nhấn để đổi tên" style={{ fontSize: '0.86rem', fontWeight: 600, color: '#1a1a1a', cursor: 'text', padding: '2px 4px', borderRadius: '4px' }}>
+                  style={{ border: '1px solid #5c33c1', borderRadius: '4px', padding: '2px 7px', fontSize: '0.85rem', fontWeight: 600, outline: 'none', maxWidth: '260px', width: '100%' }} />
+              : <span onClick={() => setIsEditingTitle(true)} style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1a1a1a', cursor: 'text', padding: '2px 4px' }}>
                   {noteTitle || 'Ghi chú mới'}
                 </span>
             }
           </div>
-          <button onClick={undo} disabled={historyIndex <= 0} title="Undo" style={{ border: 'none', background: 'none', padding: '5px', borderRadius: '5px', cursor: historyIndex > 0 ? 'pointer' : 'default', color: historyIndex > 0 ? '#555' : '#ccc' }}>
-            <Undo2 size={15} />
-          </button>
-          <button onClick={redo} disabled={historyIndex >= history.length - 1} title="Redo" style={{ border: 'none', background: 'none', padding: '5px', borderRadius: '5px', cursor: historyIndex < history.length - 1 ? 'pointer' : 'default', color: historyIndex < history.length - 1 ? '#555' : '#ccc' }}>
-            <Redo2 size={15} />
-          </button>
-          <button onClick={exportPng} title="Tải về PNG" style={{ border: 'none', background: 'none', padding: '5px', borderRadius: '5px', cursor: 'pointer', color: '#666' }}>
-            <Download size={15} />
-          </button>
-          <button onClick={() => save()} style={{ border: 'none', background: '#5c33c1', color: '#fff', padding: '4px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0 }}>
-            {saveStatus === 'saving'
-              ? <span style={{ width: 11, height: 11, border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'hn-spin 0.6s linear infinite' }} />
+          <button onClick={undo} disabled={historyIndex <= 0} title="Undo" style={{ border: 'none', background: 'none', padding: '4px', borderRadius: '5px', cursor: historyIndex > 0 ? 'pointer' : 'default', color: historyIndex > 0 ? '#555' : '#ccc' }}><Undo2 size={15} /></button>
+          <button onClick={redo} disabled={historyIndex >= history.length - 1} title="Redo" style={{ border: 'none', background: 'none', padding: '4px', borderRadius: '5px', cursor: historyIndex < history.length - 1 ? 'pointer' : 'default', color: historyIndex < history.length - 1 ? '#555' : '#ccc' }}><Redo2 size={15} /></button>
+          <button onClick={exportPng} title="Xuất PNG" style={{ border: 'none', background: 'none', padding: '4px', borderRadius: '5px', cursor: 'pointer', color: '#666' }}><Download size={15} /></button>
+          <button onClick={() => save()} style={{ border: 'none', background: '#5c33c1', color: '#fff', padding: '4px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.73rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0 }}>
+            {saveStatus === 'saving' ? <span style={{ width: 11, height: 11, border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'hn-spin 0.6s linear infinite' }} />
               : saveStatus === 'saved' ? <Check size={12} /> : <Save size={12} />}
             <span>{saveStatus === 'saved' ? 'Đã lưu' : 'Lưu'}</span>
           </button>
         </div>
 
-        {/* Tool ribbon — compact */}
+        {/* Tool ribbon — compact, all tools as dropdowns */}
         <div style={{ background: '#fff', borderBottom: '1px solid #e8e8e8', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0, overflowX: 'auto' }}>
 
-          {/* Select + Hand */}
           <ToolBtn active={tool === 'lasso'} onClick={() => setTool('lasso')} title="Lasso chọn vùng"><MousePointer2 size={14} /></ToolBtn>
           <ToolBtn active={tool === 'hand'}  onClick={() => setTool('hand')}  title="Di chuyển"><span style={{ fontSize: '12px' }}>✋</span></ToolBtn>
           <Sep />
 
-          {/* Pen presets */}
-          {penPresets.map((preset, idx) => {
-            const isActive = activePenPreset === idx && isPenActive;
-            return (
-              <button key={idx} onClick={() => selectPreset(idx)} title={preset.label} style={{
-                border: `2px solid ${isActive ? '#5c33c1' : 'transparent'}`,
-                background: isActive ? '#ede9fb' : 'transparent',
-                borderRadius: '7px', padding: '2px 4px', cursor: 'pointer',
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px', flexShrink: 0,
-              }}>
-                <svg width="28" height="16" viewBox="0 0 28 16">
-                  {preset.type === 'highlighter'
-                    ? <path d="M2 11 Q14 7 26 11" stroke={preset.color} strokeWidth="7" strokeLinecap="round" fill="none" opacity="0.5" />
-                    : <path d="M2 13 Q10 3 26 6" stroke={preset.color} strokeWidth={Math.min(preset.width * 1.3, 4.5)} strokeLinecap="round" fill="none" />}
-                </svg>
-                <span style={{ fontSize: '0.52rem', color: '#999', lineHeight: 1 }}>{preset.label}</span>
-              </button>
-            );
-          })}
+          {/* Pen preset dropdown */}
+          <button ref={penMenuBtnRef}
+            onClick={openPopup(penMenuBtnRef, setPenMenuPos, setShowPenMenu, 240, 220)}
+            style={{
+              border: `2px solid ${isPenActive ? '#5c33c1' : '#e8e8e8'}`,
+              background: isPenActive ? '#ede9fb' : '#fff',
+              borderRadius: '7px', padding: '3px 7px', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0,
+            }}>
+            <svg width="30" height="16" viewBox="0 0 30 16">
+              {currentPreset?.type === 'highlighter'
+                ? <path d="M2 11 Q15 7 28 11" stroke={currentPreset?.color ?? '#1a1a2e'} strokeWidth="7" strokeLinecap="round" fill="none" opacity="0.5" />
+                : <path d="M2 13 Q11 3 28 6" stroke={currentPreset?.color ?? '#1a1a2e'} strokeWidth={Math.min((currentPreset?.width ?? 3) * 1.2, 5)} strokeLinecap="round" fill="none" />}
+            </svg>
+            <ChevronDown size={10} style={{ color: isPenActive ? '#5c33c1' : '#999' }} />
+          </button>
+
+          <ToolBtn active={tool === 'eraser'} onClick={() => setTool('eraser')} title="Tẩy"><Eraser size={14} /></ToolBtn>
           <Sep />
 
-          {/* Eraser */}
-          <ToolBtn active={tool === 'eraser'} onClick={() => setTool('eraser')} title="Tẩy"><Eraser size={14} /></ToolBtn>
-
-          {/* Shapes dropdown */}
+          {/* Shape dropdown */}
           <button ref={shapeBtnRef}
-            onClick={openPopup(shapeBtnRef, setShapePickerPos, 140, setShowShapePicker, setShowColorPicker, setShowBgPicker)}
-            title="Vẽ hình"
+            onClick={openPopup(shapeBtnRef, setShapePickerPos, setShowShapePicker, 140, 160)}
             style={{
               border: `2px solid ${isShapeActive ? '#5c33c1' : 'transparent'}`,
               background: isShapeActive ? '#ede9fb' : 'transparent',
@@ -887,42 +945,33 @@ export default function HandwrittenNotes() {
           </button>
           <Sep />
 
-          {/* Color circle button */}
+          {/* Color dropdown */}
           <button ref={colorBtnRef}
-            onClick={openPopup(colorBtnRef, setColorPickerPos, 280, setShowColorPicker, setShowBgPicker, setShowShapePicker)}
-            title="Chọn màu"
-            style={{ border: '1px solid #e8e8e8', borderRadius: '6px', padding: '4px 7px', cursor: 'pointer', background: '#fff', display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
+            onClick={openPopup(colorBtnRef, setColorPickerPos, setShowColorPicker, 280, 230)}
+            style={{ border: '1px solid #e8e8e8', borderRadius: '6px', padding: '4px 7px', cursor: 'pointer', background: '#fff', display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
             <div style={{ width: '15px', height: '15px', borderRadius: '50%', background: color, border: '1px solid #ddd', flexShrink: 0 }} />
             <ChevronDown size={10} style={{ color: '#999' }} />
           </button>
 
-          {/* Size stepper */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1px', flexShrink: 0, marginLeft: '2px' }}>
-            <button onClick={() => setLineWidth(w => Math.max(1, Math.round(w) - 1))}
-              style={{ width: '24px', height: '24px', border: '1px solid #e0e0e0', borderRadius: '5px 0 0 5px', background: '#fafafa', cursor: 'pointer', fontSize: '14px', color: '#555', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, lineHeight: 1 }}>
-              −
-            </button>
-            <div style={{ minWidth: '28px', textAlign: 'center', fontSize: '0.78rem', fontWeight: 700, color: '#333', fontVariantNumeric: 'tabular-nums', border: '1px solid #e0e0e0', borderLeft: 'none', borderRight: 'none', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', userSelect: 'none' }}>
-              {Math.round(lineWidth)}
-            </div>
-            <button onClick={() => setLineWidth(w => Math.min(20, Math.round(w) + 1))}
-              style={{ width: '24px', height: '24px', border: '1px solid #e0e0e0', borderRadius: '0 5px 5px 0', background: '#fafafa', cursor: 'pointer', fontSize: '14px', color: '#555', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, lineHeight: 1 }}>
-              +
-            </button>
-            <div style={{ width: `${Math.min(Math.max(4, Math.round(lineWidth) * 1.5), 18)}px`, height: `${Math.min(Math.max(4, Math.round(lineWidth) * 1.5), 18)}px`, borderRadius: '50%', background: color, border: '1px solid #ddd', flexShrink: 0, marginLeft: '5px' }} />
-          </div>
+          {/* Size dropdown */}
+          <button ref={sizeBtnRef}
+            onClick={openPopup(sizeBtnRef, setSizeMenuPos, setShowSizeMenu, 190, 180)}
+            style={{ border: '1px solid #e8e8e8', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', background: '#fff', display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+            <div style={{ width: `${Math.min(Math.max(4, lineWidth * 1.3), 16)}px`, height: `${Math.min(Math.max(4, lineWidth * 1.3), 16)}px`, borderRadius: '50%', background: color, border: '1px solid #ddd', flexShrink: 0 }} />
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#444', minWidth: '14px', textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{lineWidth}</span>
+            <ChevronDown size={10} style={{ color: '#999' }} />
+          </button>
           <Sep />
 
-          {/* Background picker */}
+          {/* Background dropdown */}
           <button ref={bgBtnRef}
-            onClick={openPopup(bgBtnRef, setBgPickerPos, 290, setShowBgPicker, setShowColorPicker, setShowShapePicker)}
+            onClick={openPopup(bgBtnRef, setBgPickerPos, setShowBgPicker, 290, 190)}
             style={{ border: '1px solid #e8e8e8', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', background: '#fff', fontSize: '0.71rem', color: '#555', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
             <div style={{ width: '13px', height: '10px', borderRadius: '2px', background: BG_OPTIONS.find(b => b.id === background)?.base ?? '#fff', border: '1px solid #ddd' }} />
             Nền
             <ChevronDown size={10} style={{ color: '#999' }} />
           </button>
 
-          {/* Delete lasso selection */}
           {selectedIds.size > 0 && (
             <>
               <Sep />
@@ -933,30 +982,57 @@ export default function HandwrittenNotes() {
           )}
         </div>
 
-        {/* Canvas area — two layers stacked */}
+        {/* Canvas area — two layers */}
         <div ref={containerRef} style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#FEFDF8' }}>
-          {/* Bottom: committed strokes */}
           <canvas ref={committedCanvasRef} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', display: 'block' }} />
-          {/* Top: live drawing + pointer events */}
           <canvas ref={liveCanvasRef}
             onPointerDown={onPointerDown} onPointerMove={onPointerMove}
             onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}
             style={{ position: 'absolute', top: 0, left: 0, display: 'block', touchAction: 'none', cursor: getCursor() }} />
-
-          {/* Zoom widget */}
           <div style={{ position: 'absolute', bottom: '14px', right: '14px', zIndex: 10, display: 'flex', alignItems: 'center', background: '#fff', border: '1px solid #e8e8e8', borderRadius: '8px', padding: '3px', boxShadow: '0 2px 10px rgba(0,0,0,0.07)' }}>
             <button onClick={() => zoom('out')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#666', padding: '3px 5px', borderRadius: '4px' }}><ZoomOut size={13} /></button>
-            <span onClick={resetView} style={{ fontSize: '0.7rem', color: '#555', fontWeight: 600, padding: '0 5px', cursor: 'pointer', fontVariantNumeric: 'tabular-nums', minWidth: '38px', textAlign: 'center' }}>
+            <span onClick={resetView} style={{ fontSize: '0.7rem', color: '#555', fontWeight: 600, padding: '0 4px', cursor: 'pointer', minWidth: '36px', textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>
               {Math.round(zoomScale * 100)}%
             </span>
             <button onClick={() => zoom('in')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#666', padding: '3px 5px', borderRadius: '4px' }}><ZoomIn size={13} /></button>
             <div style={{ width: '1px', height: '12px', background: '#e8e8e8', margin: '0 1px' }} />
-            <button onClick={resetView} title="Reset" style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#666', padding: '3px 4px', borderRadius: '4px' }}><Maximize2 size={11} /></button>
+            <button onClick={resetView} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#666', padding: '3px 4px', borderRadius: '4px' }}><Maximize2 size={11} /></button>
           </div>
         </div>
       </div>
 
-      {/* ── FIXED-POSITION POPUPS ── */}
+      {/* ── FIXED POPUPS ── */}
+
+      {/* Pen presets */}
+      {showPenMenu && (
+        <div onPointerDown={e => e.stopPropagation()} style={{
+          position: 'fixed', top: penMenuPos.top, left: penMenuPos.left, zIndex: 9999,
+          background: '#fff', border: '1px solid #e8e8e8', borderRadius: '10px',
+          padding: '6px', boxShadow: '0 8px 28px rgba(0,0,0,0.12)', minWidth: '200px',
+        }}>
+          {DEFAULT_PRESETS.map((preset, idx) => {
+            const isActive = activePenPreset === idx && isPenActive;
+            return (
+              <button key={idx} onClick={() => { selectPreset(idx); setShowPenMenu(false); }} style={{
+                width: '100%', padding: '7px 10px', border: 'none', textAlign: 'left',
+                background: isActive ? '#ede9fb' : 'transparent', borderRadius: '6px', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '10px',
+              }}>
+                <svg width="48" height="16" viewBox="0 0 48 16" style={{ flexShrink: 0 }}>
+                  {preset.type === 'highlighter'
+                    ? <path d="M2 11 Q24 7 46 11" stroke={preset.color} strokeWidth="8" strokeLinecap="round" fill="none" opacity="0.5" />
+                    : <path d="M2 13 Q18 3 46 7" stroke={preset.color} strokeWidth={Math.min(preset.width * 1.3, 5)} strokeLinecap="round" fill="none" />}
+                </svg>
+                <div>
+                  <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: isActive ? 700 : 500, color: isActive ? '#5c33c1' : '#333' }}>{preset.label}</p>
+                  <p style={{ margin: 0, fontSize: '0.65rem', color: '#aaa' }}>{preset.type === 'highlighter' ? 'Dạ quang' : 'Bút'} · cỡ {preset.width}</p>
+                </div>
+                {isActive && <Check size={13} style={{ color: '#5c33c1', marginLeft: 'auto', flexShrink: 0 }} />}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Color picker */}
       {showColorPicker && (
@@ -973,11 +1049,39 @@ export default function HandwrittenNotes() {
               boxShadow: c === '#FFFFFF' ? 'inset 0 0 0 1px #ccc' : 'none',
             }} />
           ))}
-          <div style={{ gridColumn: '1/-1', marginTop: '7px', display: 'flex', alignItems: 'center', gap: '7px', borderTop: '1px solid #f0f0f0', paddingTop: '7px' }}>
+          <div style={{ gridColumn: '1/-1', marginTop: '7px', display: 'flex', alignItems: 'center', gap: '8px', borderTop: '1px solid #f0f0f0', paddingTop: '7px' }}>
             <span style={{ fontSize: '0.68rem', color: '#aaa' }}>Tùy chọn</span>
-            <input type="color" value={color} onChange={e => setColor(e.target.value)}
-              style={{ width: '28px', height: '22px', border: 'none', cursor: 'pointer', padding: 0, background: 'none' }} />
+            <input type="color" value={color} onChange={e => setColor(e.target.value)} style={{ width: '28px', height: '22px', border: 'none', cursor: 'pointer', padding: 0, background: 'none' }} />
             <span style={{ fontSize: '0.68rem', color: '#aaa', fontFamily: 'monospace' }}>{color}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Size menu */}
+      {showSizeMenu && (
+        <div onPointerDown={e => e.stopPropagation()} style={{
+          position: 'fixed', top: sizeMenuPos.top, left: sizeMenuPos.left, zIndex: 9999,
+          background: '#fff', border: '1px solid #e8e8e8', borderRadius: '10px',
+          padding: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: '160px',
+        }}>
+          <p style={{ margin: '0 0 6px 4px', fontSize: '0.66rem', color: '#bbb', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Cỡ nét</p>
+          {SIZE_OPTIONS.map(sz => (
+            <button key={sz} onClick={() => { setLineWidth(sz); setShowSizeMenu(false); }} style={{
+              width: '100%', padding: '6px 10px', border: 'none', textAlign: 'left', borderRadius: '6px',
+              background: lineWidth === sz ? '#ede9fb' : 'transparent',
+              color: lineWidth === sz ? '#5c33c1' : '#333',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px',
+            }}>
+              <div style={{ width: `${Math.min(sz * 1.4, 20)}px`, height: `${Math.min(sz * 1.4, 20)}px`, borderRadius: '50%', background: color, flexShrink: 0 }} />
+              <span style={{ fontSize: '0.8rem', fontWeight: lineWidth === sz ? 700 : 500 }}>{sz}</span>
+              {lineWidth === sz && <Check size={12} style={{ color: '#5c33c1', marginLeft: 'auto' }} />}
+            </button>
+          ))}
+          <div style={{ borderTop: '1px solid #f0f0f0', marginTop: '6px', paddingTop: '6px', display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 8px 2px' }}>
+            <span style={{ fontSize: '0.68rem', color: '#aaa' }}>Khác:</span>
+            <input type="number" min="1" max="40" value={lineWidth}
+              onChange={e => { const v = Math.max(1, Math.min(40, parseInt(e.target.value) || 1)); setLineWidth(v); }}
+              style={{ width: '48px', border: '1px solid #e0e0e0', borderRadius: '4px', padding: '2px 5px', fontSize: '0.78rem', textAlign: 'center', outline: 'none' }} />
           </div>
         </div>
       )}
@@ -987,16 +1091,16 @@ export default function HandwrittenNotes() {
         <div onPointerDown={e => e.stopPropagation()} style={{
           position: 'fixed', top: shapePickerPos.top, left: shapePickerPos.left, zIndex: 9999,
           background: '#fff', border: '1px solid #e8e8e8', borderRadius: '9px',
-          padding: '5px', boxShadow: '0 6px 20px rgba(0,0,0,0.1)', minWidth: '140px',
+          padding: '5px', boxShadow: '0 6px 20px rgba(0,0,0,0.1)', minWidth: '150px',
         }}>
           {SHAPE_OPTIONS.map(({ id, label, Icon }) => (
             <button key={id} onClick={() => { setTool(id); setShowShapePicker(false); }} style={{
               width: '100%', padding: '7px 10px', border: 'none', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px',
-              background: tool === id ? '#ede9fb' : 'transparent',
-              color: tool === id ? '#5c33c1' : '#333',
+              background: tool === id ? '#ede9fb' : 'transparent', color: tool === id ? '#5c33c1' : '#333',
               borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: tool === id ? 600 : 400,
             }}>
               <Icon size={14} /> {label}
+              {tool === id && <Check size={12} style={{ color: '#5c33c1', marginLeft: 'auto' }} />}
             </button>
           ))}
         </div>
@@ -1007,18 +1111,18 @@ export default function HandwrittenNotes() {
         <div onPointerDown={e => e.stopPropagation()} style={{
           position: 'fixed', top: bgPickerPos.top, left: bgPickerPos.left, zIndex: 9999,
           background: '#fff', border: '1px solid #e8e8e8', borderRadius: '10px',
-          padding: '5px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: '180px',
+          padding: '5px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: '190px',
         }}>
           {BG_OPTIONS.map(({ id, label, base }) => (
             <button key={id} onClick={() => { setBackground(id); setShowBgPicker(false); }} style={{
               width: '100%', padding: '7px 10px', border: 'none', textAlign: 'left',
-              background: background === id ? '#ede9fb' : 'transparent',
-              color: background === id ? '#5c33c1' : '#333',
+              background: background === id ? '#ede9fb' : 'transparent', color: background === id ? '#5c33c1' : '#333',
               borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: background === id ? 600 : 400,
               display: 'flex', alignItems: 'center', gap: '9px',
             }}>
               <div style={{ width: '22px', height: '14px', borderRadius: '3px', background: base, border: '1px solid #ddd', flexShrink: 0 }} />
               {label}
+              {background === id && <Check size={12} style={{ color: '#5c33c1', marginLeft: 'auto' }} />}
             </button>
           ))}
         </div>
