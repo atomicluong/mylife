@@ -467,39 +467,38 @@ export default function HandwrittenNotes() {
     e.preventDefault();
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
-    // Khóa sự kiện Pointer để bắt ngoài màn hình
+
     canvas.setPointerCapture(e.pointerId);
-    
-    // Ghi nhận con trỏ active
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    
+
     const { worldX, worldY } = getCanvasMousePos(e.clientX, e.clientY);
     lastPointerPos.current = { x: e.clientX, y: e.clientY };
 
-    // A. Nếu chạm 2 ngón tay trở lên: chuyển sang chế độ Panning (kéo màn hình)
+    // A. 2+ ngón tay: pinch zoom + pan
     if (activePointers.current.size >= 2) {
       isDrawing.current = false;
       currentPoints.current = [];
-      
-      // Tính toán khoảng cách pinch để zoom
       const pointerIds = Array.from(activePointers.current.keys());
       const p1 = activePointers.current.get(pointerIds[0]);
       const p2 = activePointers.current.get(pointerIds[1]);
-      
       initialPinchDist.current = Math.hypot(p1.x - p2.x, p1.y - p2.y);
       initialPinchZoom.current = zoomScale;
       return;
     }
 
-    // B. Chế độ công cụ di chuyển bằng 1 ngón tay (Hand Tool)
-    if (tool === 'hand' || e.buttons === 4) {
-      // e.buttons === 4 tương đương nút cuộn chuột giữa
+    // B. Ngón tay (touch): luôn kéo canvas — không cần chuyển chế độ
+    if (e.pointerType === 'touch') {
       isDrawing.current = false;
       return;
     }
 
-    // C. Chế độ Tẩy nét vẽ
+    // C. Hand tool hoặc chuột giữa: kéo canvas
+    if (tool === 'hand' || e.buttons === 4) {
+      isDrawing.current = false;
+      return;
+    }
+
+    // D. Tẩy (bút hoặc chuột)
     if (tool === 'eraser') {
       isDrawing.current = true;
       hasErasedThisSession.current = false;
@@ -507,81 +506,74 @@ export default function HandwrittenNotes() {
       return;
     }
 
-    // D. Chế độ Vẽ (Pen hoặc Highlighter)
+    // E. Vẽ bằng bút stylus hoặc chuột
     isDrawing.current = true;
-    
-    // Bắt đầu nét vẽ mới
     const pressure = e.pressure !== undefined && e.pressure > 0 ? e.pressure : 0.5;
     currentPoints.current = [{ x: worldX, y: worldY, p: pressure }];
-    
-    // Vẽ ngay lập tức điểm đầu tiên lên màn hình
     render();
   };
 
   const handlePointerMove = (e) => {
     if (!activePointers.current.has(e.pointerId)) return;
-    
-    // Cập nhật vị trí con trỏ trong map
+
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    
+
     const { worldX, worldY } = getCanvasMousePos(e.clientX, e.clientY);
 
-    // A. Xử lý Pan và Zoom khi có 2 ngón tay chạm trở lên (Pinch-to-zoom & Drag-to-pan)
+    // A. 2+ ngón tay: pinch zoom + pan
     if (activePointers.current.size >= 2) {
       const pointerIds = Array.from(activePointers.current.keys());
       const p1 = activePointers.current.get(pointerIds[0]);
       const p2 = activePointers.current.get(pointerIds[1]);
-      
-      // 1. Xử lý Phóng to/Thu nhỏ (Zoom)
+
       const currentDist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
       if (initialPinchDist.current > 0) {
         const factor = currentDist / initialPinchDist.current;
         let newZoom = initialPinchZoom.current * factor;
-        // Giới hạn zoom từ 0.2x đến 4x
         newZoom = Math.max(0.2, Math.min(4, newZoom));
         setZoomScale(newZoom);
       }
-      
-      // 2. Xử lý Di chuyển (Pan) dựa vào trung điểm 2 ngón tay
+
       const dx = e.clientX - lastPointerPos.current.x;
       const dy = e.clientY - lastPointerPos.current.y;
-      
-      setOffsetX(prev => prev + dx / 2); // Kéo mượt hơn khi chia đôi
+      setOffsetX(prev => prev + dx / 2);
       setOffsetY(prev => prev + dy / 2);
-      
       lastPointerPos.current = { x: e.clientX, y: e.clientY };
       return;
     }
 
-    // B. Xử lý Di chuyển bảng vẽ bằng chuột hoặc 1 ngón tay (Hand Tool)
+    // B. 1 ngón tay: luôn kéo canvas
+    if (e.pointerType === 'touch') {
+      const dx = e.clientX - lastPointerPos.current.x;
+      const dy = e.clientY - lastPointerPos.current.y;
+      setOffsetX(prev => prev + dx);
+      setOffsetY(prev => prev + dy);
+      lastPointerPos.current = { x: e.clientX, y: e.clientY };
+      return;
+    }
+
+    // C. Hand tool hoặc chuột giữa: kéo canvas
     if (tool === 'hand' || e.buttons === 4) {
       const dx = e.clientX - lastPointerPos.current.x;
       const dy = e.clientY - lastPointerPos.current.y;
-      
       setOffsetX(prev => prev + dx);
       setOffsetY(prev => prev + dy);
-      
       lastPointerPos.current = { x: e.clientX, y: e.clientY };
       return;
     }
 
-    // C. Đang vẽ dở (hoặc tẩy dở)
     if (!isDrawing.current) return;
 
     if (tool === 'eraser') {
       handleErasing(worldX, worldY);
     } else {
-      // Thêm điểm mới vào nét đang vẽ
       const pressure = e.pressure !== undefined && e.pressure > 0 ? e.pressure : 0.5;
-      
-      // Bỏ qua nếu điểm mới quá gần điểm trước đó để tối ưu hiệu năng
       const pts = currentPoints.current;
       if (pts.length > 0) {
         const lastPt = pts[pts.length - 1];
         const dist = Math.hypot(worldX - lastPt.x, worldY - lastPt.y);
-        if (dist < 1.0) return; // Nét vẽ đủ xa mới thêm điểm mới
+        if (dist < 1.0) return;
       }
-
       currentPoints.current.push({ x: worldX, y: worldY, p: pressure });
       render();
     }
